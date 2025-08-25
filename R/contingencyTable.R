@@ -198,8 +198,8 @@ NULL
     r1_chunk <- terra::crop(r1, chunk_ext)
     r2_chunk <- terra::crop(r2, chunk_ext)
     
-    # Process chunk
-    chunk_results[[i]] <- terra::crosstab(terra::c(r1_chunk, r2_chunk), 
+    # Process chunk - Use base c() instead of terra::c()
+    chunk_results[[i]] <- terra::crosstab(c(r1_chunk, r2_chunk), 
                                          useNA = FALSE, long = TRUE)
   }
   

@@ -255,7 +255,8 @@ acc_changes <- function(path) {
         # For terra objects, use terra::app with combined rasters
         combined <- c(x, y)  # Use base R c() function, not terra::c()
         terra::app(combined, fun = function(vals) {
-          ifelse(vals[1] != vals[2], 1, 0)
+          # vals is a matrix with columns for each layer
+          ifelse(vals[,1] != vals[,2], 1, 0)
         })
       } else {
         # For raster objects, use raster::overlay
