@@ -8,6 +8,14 @@
   * Added `name_pattern` parameter for custom regex patterns
   * Maintains full backward compatibility with existing naming convention
 
+## Improvements
+
+* Enhanced robustness of flexible naming features:
+  * Automatic detection and handling of R's name modifications (hyphens → dots, numeric prefix → "X" prefix)
+  * Intelligent error messages with helpful suggestions for common issues
+  * Automatic separator adjustment with informative warnings
+  * Better documentation about R's automatic name changes
+
 ## Dependencies
 
 * Added `stringr` package dependency for improved string processing
