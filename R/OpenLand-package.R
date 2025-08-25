@@ -1,22 +1,24 @@
 "_PACKAGE"
-#' OpenLand: land use and cover (LUC) time series analysis in R.
+#' OpenLand: Quantitative Analysis and Visualization of Land Use and Cover Change
 #'
-#' OpenLand is an open-source R package for the analysis of land use and cover
-#' (LUC) time series. It includes support for consistency check and loading
-#' spatiotemporal raster data and synthesized spatial plotting. Several LUC change
-#' (LUCC) metrics in regular or irregular time intervals can be extracted and
-#' visualized through one- and multistep sankey and chord diagrams. A complete
-#' intensity analysis according to \cite{(Aldwaik and Pontius, 2012)} is
-#' implemented, including tools for the generation of standardized multilevel
-#' output graphics.
+#' OpenLand is a comprehensive R package for analyzing land use and cover (LUC) 
+#' time series data. It provides tools for consistency checking, loading spatiotemporal 
+#' raster data, and creating synthesized spatial visualizations. The package implements 
+#' multiple LUC change (LUCC) metrics for regular or irregular time intervals, with 
+#' visualization through one- and multistep sankey and chord diagrams.
 #'
-#' \strong{Performance Improvements in v1.0.3.9000+:}
-#' \itemize{
-#'   \item Enhanced performance through optional terra package integration
-#'   \item 2-10x faster raster processing for large datasets
-#'   \item Improved memory management for large raster time series
-#'   \item Backward compatibility maintained with raster package
-#'   \item Vectorized operations replace manual loops for better performance
+#' @section Core Functionality:
+#' The package implements a complete intensity analysis framework following 
+#' Aldwaik and Pontius (2012), with tools for generating standardized multilevel 
+#' output graphics and comprehensive change detection algorithms.
+#'
+#' @section Performance Optimizations (v1.0.3.9000+):
+#' \describe{
+#'   \item{Terra Integration}{Optional terra package support for 2-3x faster raster processing}
+#'   \item{Parallel Processing}{Multi-core support for large dataset analysis}
+#'   \item{Memory Efficiency}{Improved memory management for large raster time series}
+#'   \item{Backward Compatibility}{Full compatibility maintained with raster package}
+#'   \item{Chunked Processing}{Handle datasets larger than available RAM}
 #' }
 #'
 #' \strong{Key Functions:}

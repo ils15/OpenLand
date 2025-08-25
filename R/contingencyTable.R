@@ -79,68 +79,9 @@ NULL
 #' @import dplyr
 #' @importFrom stringr str_extract
 #'
-#' @return A list that contains 5 objects.
-#' \itemize{
-#'   \item \code{lulc_Mulstistep}: \code{<tibble>} Contingency table for all
-#'   analysed time steps, containing 8 columns:
-#'   \enumerate{
-#'   \item Period: \code{<chr>} The period \emph{[Yt, Yt+1]}.
-#'   \item From: \code{<dbl>} numerical code of a LUC category \emph{i}.
-#'   \item To: \code{<dbl>} numerical code of a LUC category \emph{j}.
-#'   \item km2: \code{<dbl>} Area in square kilometers that transited from the
-#'   category \emph{i}
-#'    to category \emph{j} in the period from \emph{Yt} to \emph{Yt+1}.
-#'   \item Interval: \code{<dbl>} Interval of years between the first and
-#'    the last year of the period \emph{[Yt, Yt+1]}.
-#'   \item QtPixel: \code{<int>} Pixel count that transited from the categories
-#'    \emph{i}
-#'    to category \emph{j} in the period from \emph{Yt} to \emph{Yt+1}.
-#'   \item yearFrom: \code{<chr>} The year that the change comes from \emph{[Yt]}.
-#'   \item yearTo: \code{<chr>} The year that the change goes for \emph{[Yt+1]}.
-#'   }
-#'   \item \code{lulc_Onestep}:\code{<tibble>} Contingency table for the entire
-#'   analysed period \emph{[Y1, YT]}, containing
-#'   8 columns identical with \code{lulc_Mulstistep}.
-#'   \item \code{tb_legend}: \code{<tibble>} A table of the pixel value, his
-#'   name and color containing 3 columns:
-#'   \enumerate{
-#'   \item categoryValue: \code{<dbl>} the pixel value of the LUC category.
-#'   \item categoryName: \code{<factor>} randomly created string associated with
-#'    a given pixel value of a LUC category.
-#'   \item color: \code{<chr>} random color associated with the given pixel value
-#'    of a LUC category.
-#'   Before further analysis, one would like to change the \code{categoryName}
-#'   and \code{color} values.
-#'   }
-#'   
-#'   **Note:** If \code{exclude_classes} was used, the excluded classes will not 
-#'   appear in any of the result tables. The excluded classes information is stored
-#'   as an attribute in \code{tb_legend} and can be accessed with 
-#'   \code{attr(result$tb_legend, "excluded_classes")}.
-#'   
-#'     \itemize{
-#'         \item Therefore the category names have to be in the same order as the
-#'          \code{categoryValue}
-#'         and the \code{levels} should be put in the right order for legend
-#'         plotting. Like:
-#'         \preformatted{
-#'
-#'         myobject$tb_legend$categoryName <- factor(c("name1", "name2", "name3", "name4"),
-#'                                                levels = c("name3", "name2", "name1", "name4"))}
-#'         \item The colors have to in the same order as the values in the \code{categoryValue} column. Colors can be given by the
-#'        color name (eg. "black") or an HEX value (eg. #FFFFFF). Like:
-#'        \preformatted{
-#'
-#'        myobject$tb_legend$color <- c("#CDB79E", "red", "#66CD00", "yellow")}}}
-#'   \item \code{totalArea}: \code{<tibble>}  A table with the total area of the
-#'    study area containing 2 columns:
-#'   \enumerate{
-#'   \item area_km2: \code{<numeric>} The total area in square kilometers.
-#'   \item QtPixel: \code{<numeric>} The total area in pixel counts.
-#'   }
-#'   \item \code{totalInterval}: \code{<numeric>} Total interval of the analysed
-#'    time series in years.
-#'   }
+#' @return A list containing 5 objects: lulc_Multistep (multi-period contingency table),
+#'   lulc_Onestep (full period contingency table), tb_legend (category legend),
+#'   totalArea (landscape area), and totalInterval (time interval in years).
 #'
 #'
 #' @export
@@ -150,22 +91,9 @@ NULL
 #'
 #' @examples
 #' \donttest{
-#' url <- "https://zenodo.org/record/3685230/files/SaoLourencoBasin.rda?download=1"
-#' temp <- tempfile()
-#' download.file(url, temp, mode = "wb") #downloading the online dataset
-#' load(temp)
-#' 
-#' # Basic usage with default naming convention (text_YEAR)
-#' contingencyTable(input_raster = SaoLourencoBasin, pixelresolution = 30)
-#' 
-#' # Using different separator (e.g., for names like "landscape-2020")
-#' # contingencyTable(input_raster = your_raster, name_separator = "-")
-#' 
-#' # Using year at the beginning (e.g., "2020_landscape_data")
-#' # contingencyTable(input_raster = your_raster, year_position = "first")
-#' 
-#' # Using custom pattern to extract year from complex names
-#' # contingencyTable(input_raster = your_raster, name_pattern = "\\d{4}")
+#' # Basic usage with default naming
+#' data(SL_2002_2014)
+#' print(SL_2002_2014$lulc_Multistep)
 #' }
 #'
 #'

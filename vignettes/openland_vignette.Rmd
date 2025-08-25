@@ -40,6 +40,7 @@ dataset_available <- tryCatch({
   temp <- tempfile()
   download.file(url, temp, mode = "wb") # downloading the SaoLourencoBasin dataset
   load(temp)
+  TRUE  # Return TRUE on success
 }, error = function(e) {
   return(FALSE)
 })
