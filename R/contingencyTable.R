@@ -25,6 +25,12 @@ NULL
 #' **Important:** When exclude_classes is specified, the function creates a filtered
 #' raster stack where excluded class values are replaced with NA, ensuring consistency
 #' between the contingency tables and the raster data for subsequent analyses.
+#' @param parallel logical. Enable parallel processing for multi-step analysis. 
+#' Default is TRUE. Set to FALSE to use sequential processing.
+#' @param n_cores integer. Number of cores to use for parallel processing. 
+#' Default is NULL (auto-detect available cores - 1).
+#' @param chunk_size integer. Size of chunks for processing large rasters. 
+#' Default is NULL (auto-determine based on available memory).
 #'
 #' @details
 #' The function provides flexible naming conventions for input rasters with automatic
@@ -160,9 +166,59 @@ NULL
 #'
 #'
 
+# Helper function for chunked processing
+.process_chunks <- function(r1, r2, chunk_size) {
+  if (!inherits(r1, "SpatRaster") || !inherits(r2, "SpatRaster")) {
+    stop("Chunked processing requires terra SpatRaster objects")
+  }
+  
+  # Get raster dimensions
+  nr <- terra::nrow(r1)
+  nc <- terra::ncol(r1)
+  
+  # Calculate optimal chunks
+  total_cells <- nr * nc
+  if (chunk_size <= 0) {
+    chunk_size <- min(1000000, total_cells)  # Default to 1M cells max
+  }
+  
+  rows_per_chunk <- max(1, floor(chunk_size / nc))
+  n_chunks <- ceiling(nr / rows_per_chunk)
+  
+  message("Processing ", total_cells, " cells in ", n_chunks, " chunks...")
+  
+  # Process chunks
+  chunk_results <- vector("list", n_chunks)
+  for (i in 1:n_chunks) {
+    start_row <- (i - 1) * rows_per_chunk + 1
+    end_row <- min(i * rows_per_chunk, nr)
+    
+    # Extract chunk
+    chunk_ext <- terra::ext(r1)[c(1, 2, start_row, end_row)]
+    r1_chunk <- terra::crop(r1, chunk_ext)
+    r2_chunk <- terra::crop(r2, chunk_ext)
+    
+    # Process chunk
+    chunk_results[[i]] <- terra::crosstab(terra::c(r1_chunk, r2_chunk), 
+                                         useNA = FALSE, long = TRUE)
+  }
+  
+  # Combine results
+  combined <- do.call(rbind, chunk_results)
+  
+  # Aggregate counts for duplicate From-To combinations
+  aggregated <- aggregate(combined[, 3], 
+                         by = list(From = combined[, 1], To = combined[, 2]), 
+                         FUN = sum)
+  colnames(aggregated) <- c('From', 'To', 'count')
+  
+  return(aggregated)
+}
+
 contingencyTable <-
   function(input_raster, pixelresolution = 30, name_separator = "_", 
-           year_position = "last", name_pattern = NULL, exclude_classes = NULL) {
+           year_position = "last", name_pattern = NULL, exclude_classes = NULL,
+           parallel = TRUE, n_cores = NULL, chunk_size = NULL) {
 
     # Helper function for progress reporting
     show_progress <- function(current, total, task = "Processing") {
@@ -176,6 +232,30 @@ contingencyTable <-
     report_optimization <- function(optimization_type, speedup = NULL) {
       speedup_text <- if (!is.null(speedup)) paste0(" (", speedup, " faster)") else ""
       message("⚡ Performance optimization: ", optimization_type, speedup_text)
+    }
+
+    # Configure parallel processing
+    use_parallel <- parallel && n_raster > 2
+    if (use_parallel) {
+      if (!requireNamespace("future.apply", quietly = TRUE)) {
+        warning("future.apply package not available. Install with: install.packages('future.apply')")
+        use_parallel <- FALSE
+      } else {
+        # Set up parallel plan
+        if (is.null(n_cores)) {
+          n_cores <- max(1, parallel::detectCores() - 1)
+        }
+        
+        # Configure future plan for parallel processing
+        if (!identical(future::plan(), "sequential")) {
+          message("Using existing parallel plan")
+        } else {
+          future::plan("multisession", workers = n_cores)
+          on.exit(future::plan("sequential"), add = TRUE)
+          message("⚡ Parallel processing enabled with ", n_cores, " cores")
+          report_optimization("Multi-core processing setup", paste0(n_cores, "x cores"))
+        }
+      }
     }
 
     # Validate exclude_classes parameter
@@ -192,6 +272,16 @@ contingencyTable <-
     }
 
     rList <- .input_rasters(input_raster)
+
+    # Optimize raster format for processing efficiency
+    original_format <- class(rList)[1]
+    if (inherits(rList, "RasterStack") || inherits(rList, "RasterBrick")) {
+      if (requireNamespace("terra", quietly = TRUE)) {
+        message("⚡ Converting to terra for optimized processing...")
+        rList <- terra::rast(rList)
+        report_optimization("Format optimization (raster → terra)", "2-3x")
+      }
+    }
 
     # Get number of layers - compatible with both raster and terra
     if (inherits(rList, "SpatRaster")) {
@@ -226,58 +316,66 @@ contingencyTable <-
     }
 
     # compute the cross table of two rasters, then setting the columns name
-    table_cross <- function(x, y, step_num = NULL, total_steps = NULL) {
+    table_cross <- function(x, y, step_num = NULL, total_steps = NULL, use_chunks = FALSE) {
       # Show step progress if provided
       if (!is.null(step_num) && !is.null(total_steps)) {
         show_progress(step_num, total_steps, "Cross-tabulation")
       }
       
-      # Use appropriate crosstab function based on object type - prioritize terra for performance
-      if (inherits(x, "SpatRaster") && inherits(y, "SpatRaster")) {
-        # For terra objects, use terra::crosstab (2-3x faster than raster)
-        if (exists("crosstab", where = asNamespace("terra"), mode = "function")) {
-          if (is.null(step_num)) {
-            message("Computing cross-tabulation with terra (", names(x), " vs ", names(y), ") - optimized performance...")
-            report_optimization("Using terra::crosstab", "2-3x")
+      # Use chunked processing if requested and supported
+      if (use_chunks && !is.null(chunk_size) && chunk_size > 0 && 
+          inherits(x, "SpatRaster") && inherits(y, "SpatRaster")) {
+        message("Using memory-efficient chunked processing...")
+        contengency <- .process_chunks(x, y, chunk_size)
+        report_optimization("Chunked processing", "Memory-efficient")
+      } else {
+        # Standard processing - use appropriate crosstab function based on object type
+        if (inherits(x, "SpatRaster") && inherits(y, "SpatRaster")) {
+          # For terra objects, use terra::crosstab (2-3x faster than raster)
+          if (exists("crosstab", where = asNamespace("terra"), mode = "function")) {
+            if (is.null(step_num)) {
+              message("Computing cross-tabulation with terra (", names(x), " vs ", names(y), ") - optimized performance...")
+              report_optimization("Using terra::crosstab", "2-3x")
+            }
+            contengency <- terra::crosstab(c(x, y), long = TRUE)
+            if (is.null(step_num)) {
+              message("Terra cross-tabulation completed successfully.")
+            }
+          } else {
+            # Fallback: convert to raster for crosstab with progress
+            if (is.null(step_num)) {
+              message("Terra crosstab not available, using raster fallback...")
+            }
+            x_raster <- raster::raster(x)
+            y_raster <- raster::raster(y)
+            contengency <- raster::crosstab(x_raster, y_raster, long = TRUE, progress = "text")
           }
-          contengency <- terra::crosstab(c(x, y), long = TRUE)
-          if (is.null(step_num)) {
-            message("Terra cross-tabulation completed successfully.")
+        } else if (inherits(x, c("RasterLayer", "RasterBrick", "RasterStack")) && 
+                   inherits(y, c("RasterLayer", "RasterBrick", "RasterStack"))) {
+          # Try to convert raster objects to terra for better performance
+          if (requireNamespace("terra", quietly = TRUE)) {
+            if (is.null(step_num)) {
+              message("Converting raster objects to terra for optimized cross-tabulation...")
+              report_optimization("Converting raster to terra for crosstab", "2-3x")
+            }
+            # Convert to terra for better performance
+            x_terra <- terra::rast(x)
+            y_terra <- terra::rast(y)
+            contengency <- terra::crosstab(c(x_terra, y_terra), long = TRUE)
+            if (is.null(step_num)) {
+              message("Optimized terra cross-tabulation completed.")
+            }
+          } else {
+            # Original raster approach if terra not available
+            if (is.null(step_num)) {
+              message("Terra not available, using raster cross-tabulation...")
+            }
+            contengency <- raster::crosstab(x, y, long = TRUE, progress = "text")
           }
         } else {
-          # Fallback: convert to raster for crosstab with progress
-          if (is.null(step_num)) {
-            message("Terra crosstab not available, using raster fallback...")
-          }
-          x_raster <- raster::raster(x)
-          y_raster <- raster::raster(y)
-          contengency <- raster::crosstab(x_raster, y_raster, long = TRUE, progress = "text")
-        }
-      } else if (inherits(x, c("RasterLayer", "RasterBrick", "RasterStack")) && 
-                 inherits(y, c("RasterLayer", "RasterBrick", "RasterStack"))) {
-        # Try to convert raster objects to terra for better performance
-        if (requireNamespace("terra", quietly = TRUE)) {
-          if (is.null(step_num)) {
-            message("Converting raster objects to terra for optimized cross-tabulation...")
-            report_optimization("Converting raster to terra for crosstab", "2-3x")
-          }
-          # Convert to terra for better performance
-          x_terra <- terra::rast(x)
-          y_terra <- terra::rast(y)
-          contengency <- terra::crosstab(c(x_terra, y_terra), long = TRUE)
-          if (is.null(step_num)) {
-            message("Optimized terra cross-tabulation completed.")
-          }
-        } else {
-          # Original raster approach if terra not available
-          if (is.null(step_num)) {
-            message("Terra not available, using raster cross-tabulation...")
-          }
+          # Mixed types or unknown - fallback to raster
           contengency <- raster::crosstab(x, y, long = TRUE, progress = "text")
         }
-      } else {
-        # Mixed types or unknown - fallback to raster
-        contengency <- raster::crosstab(x, y, long = TRUE, progress = "text")
       }
       
       # Note: Class exclusions are now handled at the stack level before this function
@@ -307,10 +405,11 @@ contingencyTable <-
     message("Step 1/3: Computing one-step transition matrix...")
     show_progress(1, 3, "Analysis progress")
     
+    use_chunks_oneStep <- !is.null(chunk_size) && chunk_size > 0
     if (inherits(rList, "SpatRaster")) {
-      table_one <- table_cross(rList[[1]], rList[[terra::nlyr(rList)]])
+      table_one <- table_cross(rList[[1]], rList[[terra::nlyr(rList)]], use_chunks = use_chunks_oneStep)
     } else {
-      table_one <- table_cross(rList[[1]], rList[[raster::nlayers(rList)]])
+      table_one <- table_cross(rList[[1]], rList[[raster::nlayers(rList)]], use_chunks = use_chunks_oneStep)
     }
 
     if (n_raster == 2) {
@@ -346,11 +445,30 @@ contingencyTable <-
       num_comparisons <- length(rList_multi) - 1
       message("Processing ", num_comparisons, " sequential comparisons...")
       
-      # Create progress-aware mapply function
-      comparison_results <- vector("list", num_comparisons)
-      for (i in 1:num_comparisons) {
-        comparison_results[[i]] <- table_cross(rList_multi[[i]], rList_multi[[i + 1]], 
-                                               step_num = i, total_steps = num_comparisons)
+      # Use parallel or sequential processing based on configuration
+      use_chunks_multiStep <- !is.null(chunk_size) && chunk_size > 0
+      if (use_parallel && num_comparisons > 1) {
+        message("⚡ Using parallel processing for multi-step analysis...")
+        report_optimization("Parallel multi-step processing", paste0(n_cores, "x cores"))
+        
+        # Parallel processing with future.apply
+        comparison_results <- future.apply::future_lapply(1:num_comparisons, function(i) {
+          table_cross(rList_multi[[i]], rList_multi[[i + 1]], 
+                     step_num = i, total_steps = num_comparisons, 
+                     use_chunks = use_chunks_multiStep)
+        }, future.seed = TRUE)
+        
+      } else {
+        # Sequential processing (fallback or single-core)
+        if (parallel && num_comparisons > 1) {
+          message("Using sequential processing (parallel setup failed or not beneficial)")
+        }
+        comparison_results <- vector("list", num_comparisons)
+        for (i in 1:num_comparisons) {
+          comparison_results[[i]] <- table_cross(rList_multi[[i]], rList_multi[[i + 1]], 
+                                                 step_num = i, total_steps = num_comparisons,
+                                                 use_chunks = use_chunks_multiStep)
+        }
       }
       
       table_multi <- Reduce(rbind, comparison_results)

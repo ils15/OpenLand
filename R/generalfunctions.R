@@ -231,32 +231,65 @@ acc_changes <- function(path) {
 
   rList <- .input_rasters(path)
 
-  rList <- raster::unstack(rList)
-
-  n_raster <- length(rList)
-
-  if (n_raster < 2) {
-    stop('acc_changes needs at least 2 rasters')
+  # Handle both terra and raster objects for unstacking
+  if (inherits(rList, "SpatRaster")) {
+    # For terra objects, convert to list of individual layers
+    n_raster <- terra::nlyr(rList)
+    if (n_raster < 2) {
+      stop('acc_changes needs at least 2 rasters')
+    }
+    rList <- lapply(1:n_raster, function(i) rList[[i]])
+  } else {
+    # For raster objects, use unstack
+    rList <- raster::unstack(rList)
+    n_raster <- length(rList)
+    if (n_raster < 2) {
+      stop('acc_changes needs at least 2 rasters')
+    }
   }
 
+  # Create difference layers - handle both terra and raster objects
   difflist <- mapply(
-    function(x, y)
-      raster::overlay(
-        x,
-        y,
-        fun = function(x1, x2)
-          ifelse((x1 != x2), 1, 0)
-      ),
+    function(x, y) {
+      if (inherits(x, "SpatRaster") && inherits(y, "SpatRaster")) {
+        # For terra objects, use terra::app
+        terra::app(terra::c(x, y), fun = function(vals) {
+          ifelse(vals[1] != vals[2], 1, 0)
+        })
+      } else {
+        # For raster objects, use raster::overlay
+        raster::overlay(
+          x,
+          y,
+          fun = function(x1, x2)
+            ifelse((x1 != x2), 1, 0)
+        )
+      }
+    },
     x = rList[1:(length(rList) - 1)],
     y = rList[2:length(rList)],
     SIMPLIFY = FALSE
   )
 
-  sumraster <- sum(raster::stack(difflist))
+  # Sum all difference layers
+  if (inherits(difflist[[1]], "SpatRaster")) {
+    # For terra objects
+    sumraster <- Reduce("+", difflist)
+  } else {
+    # For raster objects
+    sumraster <- sum(raster::stack(difflist))
+  }
 
   Freq <- Var1 <- NULL
 
-  df01_values <- table(matrix(sumraster))
+  # Extract values for table - handle both terra and raster objects
+  if (inherits(sumraster, "SpatRaster")) {
+    # For terra objects
+    df01_values <- table(terra::values(sumraster, na.rm = TRUE))
+  } else {
+    # For raster objects
+    df01_values <- table(matrix(sumraster))
+  }
 
   df_values <- dplyr::mutate(data.frame(df01_values),
                              Var1 = as.character(Var1),
