@@ -181,3 +181,56 @@ acc_changes <- function(path) {
   list(sumraster, df_values)
 
 }
+
+
+#' Extract year from raster name with flexible naming conventions
+#'
+#' This internal function provides flexible extraction of years from raster names
+#' supporting different separators, year positions, and custom patterns.
+#'
+#' @param name character. The raster name to extract year from.
+#' @param separator character. The separator used to split the name.
+#' @param position character or numeric. Position of the year in the split name.
+#' @param pattern character. Regular expression pattern to extract year.
+#'
+#' @return character. The extracted year as a string.
+#'
+#' @keywords internal
+#' @noRd
+extract_year_from_name <- function(name, separator = "_", 
+                                   position = "last", pattern = NULL) {
+  if (!is.null(pattern)) {
+    # Use custom pattern if provided
+    year_match <- stringr::str_extract(name, pattern)
+    if (is.na(year_match)) {
+      stop(paste("Could not extract year from name:", name, "using pattern:", pattern))
+    }
+    return(year_match)
+  } else {
+    # Use separator and position
+    parts <- strsplit(name, separator, fixed = TRUE)[[1]]
+    if (length(parts) < 2) {
+      stop(paste("Name", name, "does not contain separator", separator))
+    }
+    
+    if (position == "last") {
+      year <- parts[length(parts)]
+    } else if (position == "first") {
+      year <- parts[1]
+    } else if (is.numeric(position)) {
+      if (position > length(parts) || position < 1) {
+        stop(paste("Position", position, "is out of range for name:", name))
+      }
+      year <- parts[position]
+    } else {
+      stop("year_position must be 'first', 'last', or a numeric position")
+    }
+    
+    # Validate that extracted part looks like a year
+    if (!grepl("^[0-9]{4}$", year)) {
+      stop(paste("Extracted part", year, "from name", name, "does not look like a 4-digit year"))
+    }
+    
+    return(year)
+  }
+}

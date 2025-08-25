@@ -1,7 +1,7 @@
 utils::globalVariables(c("Interval", "Period", "Year_from",
                          "Year_to", "strings01", "strings02"))
 
-#' @include demolandscape.R rasters_input.R
+#' @include demolandscape.R rasters_input.R generalfunctions.R
 NULL
 
 #' Contingency table
@@ -13,11 +13,24 @@ NULL
 #' objects. See \cr \code{\link[raster]{raster}} for more information about
 #' supported file types.
 #' @param pixelresolution numeric. The pixel spatial resolution in meter.
+#' @param name_separator character. The separator used to split the raster names. 
+#' Default is "_" (underscore).
+#' @param year_position character. Position of the year in the split name. 
+#' Options: "last" (default), "first", or a numeric position.
+#' @param name_pattern character. Regular expression pattern to extract year from names.
+#' If provided, overrides name_separator and year_position. Default is NULL.
 #'
-#'
-#'
+#' @details
+#' The function provides flexible naming conventions for input rasters:
+#' \itemize{
+#'   \item Default: "text_YEAR" format (e.g., "landscape_2020")
+#'   \item Custom separator: Use \code{name_separator} for different separators
+#'   \item Year position: Use \code{year_position} to specify where the year appears
+#'   \item Pattern matching: Use \code{name_pattern} for complex naming schemes
+#' }
 #'
 #' @import dplyr
+#' @importFrom stringr str_extract
 #'
 #' @return A list that contains 5 objects.
 #' \itemize{
@@ -86,14 +99,33 @@ NULL
 #' temp <- tempfile()
 #' download.file(url, temp, mode = "wb") #downloading the online dataset
 #' load(temp)
-#' # the contingencyTable() function, with the SaoLourencoBasin dataset
+#' 
+#' # Basic usage with default naming convention (text_YEAR)
 #' contingencyTable(input_raster = SaoLourencoBasin, pixelresolution = 30)
+#' 
+#' # Using different separator (e.g., for names like "landscape-2020")
+#' # contingencyTable(input_raster = your_raster, name_separator = "-")
+#' 
+#' # Using year at the beginning (e.g., "2020_landscape_data")
+#' # contingencyTable(input_raster = your_raster, year_position = "first")
+#' 
+#' # Using custom pattern to extract year from complex names
+#' # contingencyTable(input_raster = your_raster, name_pattern = "\\d{4}")
 #' }
 #'
 #'
 
 contingencyTable <-
-  function(input_raster, pixelresolution = 30) {
+  function(input_raster, pixelresolution = 30, name_separator = "_", 
+           year_position = "last", name_pattern = NULL) {
+
+    rList <- .input_rasters(input_raster)
+
+    n_raster <- raster::nlayers(rList)
+
+contingencyTable <-
+  function(input_raster, pixelresolution = 30, name_separator = "_", 
+           year_position = "last", name_pattern = NULL) {
 
     rList <- .input_rasters(input_raster)
 
@@ -106,8 +138,19 @@ contingencyTable <-
     # compute the cross table of two rasters, then setting the columns name
     table_cross <- function(x, y) {
       contengency <- raster::crosstab(x, y, long = TRUE, progress = "text")
-      contengency %>% dplyr::mutate(Year_from = colnames(contengency)[1],
-                                    Year_to = colnames(contengency)[2]) %>%
+      
+      # Extract years from raster names using the flexible function
+      name_x <- names(x)
+      name_y <- names(y)
+      year_from <- extract_year_from_name(name_x, name_separator, year_position, name_pattern)
+      year_to <- extract_year_from_name(name_y, name_separator, year_position, name_pattern)
+      
+      # Create standardized names for the cross-tabulation
+      from_name <- paste0("from_", year_from)
+      to_name <- paste0("to_", year_to)
+      
+      contengency %>% dplyr::mutate(Year_from = from_name,
+                                    Year_to = to_name) %>%
         dplyr::rename(
           From = colnames(contengency)[1],
           To = colnames(contengency)[2],
@@ -135,11 +178,11 @@ contingencyTable <-
     lulctable <-
       lapply(lulc, function(x)
         x %>% dplyr::arrange(Year_from) %>%
-          tidyr::separate(Year_from, c("strings01", "yearFrom"), sep = "_") %>%
-          tidyr::separate(Year_to, c("strings02", "yearTo"), sep = "_") %>%
-          dplyr::select(-strings01, -strings02) %>%
-          dplyr::mutate(yearFrom = as.integer(yearFrom), yearTo = as.integer(yearTo),
-                        Interval = yearTo - yearFrom) %>%
+          dplyr::mutate(
+            yearFrom = as.integer(stringr::str_extract(Year_from, "[0-9]{4}")),
+            yearTo = as.integer(stringr::str_extract(Year_to, "[0-9]{4}"))
+          ) %>%
+          dplyr::mutate(Interval = yearTo - yearFrom) %>%
           dplyr::mutate(km2 = QtPixel * (pixelresolution ^ 2) / 1e+06) %>%
           tidyr::unite("Period", c("yearFrom", "yearTo"), sep = "-", remove = FALSE) %>%
           dplyr::select(Period, From, To, km2, QtPixel, Interval, yearFrom, yearTo))

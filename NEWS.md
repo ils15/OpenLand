@@ -1,5 +1,17 @@
 # OpenLand (development version)
 
+## New Features
+
+* `contingencyTable()` now supports flexible naming conventions for input rasters:
+  * Added `name_separator` parameter to use different separators (default: "_")
+  * Added `year_position` parameter to specify year position ("first", "last", or numeric)
+  * Added `name_pattern` parameter for custom regex patterns
+  * Maintains full backward compatibility with existing naming convention
+
+## Dependencies
+
+* Added `stringr` package dependency for improved string processing
+
 # OpenLand 1.0.3
 
 * fixed unit test related to the plot function depending on the ggplot package (@teunbrand, #9)
