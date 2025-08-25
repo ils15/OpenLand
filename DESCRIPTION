@@ -36,6 +36,7 @@ Imports:
     circlize (>= 0.4.8),
     networkD3 (>= 0.4),
     raster (>= 3.0.7),
+    terra (>= 1.6.0),
     stringr (>= 1.4.0),
     methods
 Collate: 
