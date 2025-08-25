@@ -1,14 +1,7 @@
 utils::globalVariables(c("Interval", "Period", "Year_from",
                          "Year_to", "strings01", "strings02"))
 
-## # Using custom pattern to extract year from complex names
-# # contingencyTable(input_raster = your_raster, name_pattern = "\\d{4}")
-# 
-# # Excluding background class (0) from analysis
-# # contingencyTable(input_raster = SaoLourencoBasin, exclude_classes = 0)
-# 
-# # Excluding multiple classes (0 and 255)
-# # contingencyTable(input_raster = SaoLourencoBasin, exclude_classes = c(0, 255))@include demolandscape.R rasters_input.R generalfunctions.R
+#' @include demolandscape.R rasters_input.R generalfunctions.R
 NULL
 
 #' Contingency table
@@ -123,6 +116,7 @@ NULL
 #' @export
 #'
 #' @importFrom raster unstack crosstab compareRaster raster values stack overlay brick
+#' @importFrom terra nlyr crosstab
 #'
 #' @examples
 #' \donttest{
@@ -165,7 +159,12 @@ contingencyTable <-
 
     rList <- .input_rasters(input_raster)
 
-    n_raster <- raster::nlayers(rList)
+    # Get number of layers - compatible with both raster and terra
+    if (inherits(rList, "SpatRaster")) {
+      n_raster <- terra::nlyr(rList)
+    } else {
+      n_raster <- raster::nlayers(rList)
+    }
 
     if (n_raster < 2) {
       stop('contingencyTable needs at least 2 rasters')
@@ -173,7 +172,21 @@ contingencyTable <-
 
     # compute the cross table of two rasters, then setting the columns name
     table_cross <- function(x, y) {
-      contengency <- raster::crosstab(x, y, long = TRUE, progress = "text")
+      # Use appropriate crosstab function based on object type
+      if (inherits(x, "SpatRaster") && inherits(y, "SpatRaster")) {
+        # For terra objects, use terra::crosstab if available, otherwise convert to raster
+        if (exists("crosstab", where = asNamespace("terra"), mode = "function")) {
+          contengency <- terra::crosstab(c(x, y), long = TRUE)
+        } else {
+          # Fallback: convert to raster for crosstab
+          x_raster <- raster::raster(x)
+          y_raster <- raster::raster(y)
+          contengency <- raster::crosstab(x_raster, y_raster, long = TRUE, progress = "text")
+        }
+      } else {
+        # For raster objects, use raster::crosstab
+        contengency <- raster::crosstab(x, y, long = TRUE, progress = "text")
+      }
       
       # Apply class exclusions if specified
       if (!is.null(exclude_classes)) {
@@ -212,13 +225,24 @@ contingencyTable <-
     }
 
 
-    table_one <- table_cross(rList[[1]], rList[[raster::nlayers(rList)]])
+    # Create table for first and last raster comparison
+    if (inherits(rList, "SpatRaster")) {
+      table_one <- table_cross(rList[[1]], rList[[terra::nlyr(rList)]])
+    } else {
+      table_one <- table_cross(rList[[1]], rList[[raster::nlayers(rList)]])
+    }
 
-    if (raster::nlayers(rList) == 2) {
+    if (n_raster == 2) {
       table_multi <- table_one
     }
     else {
-      rList_multi <- raster::unstack(rList)
+      # Handle multi-step analysis
+      if (inherits(rList, "SpatRaster")) {
+        # For SpatRaster, convert to list for processing
+        rList_multi <- lapply(1:terra::nlyr(rList), function(i) rList[[i]])
+      } else {
+        rList_multi <- raster::unstack(rList)
+      }
       table_multi <- Reduce(rbind,
                             mapply(function(x, y)
                               table_cross(x, y), rList_multi[1:(length(rList_multi) - 1)],

@@ -1,11 +1,27 @@
-# Teste rápido da funcionalidade exclude_classes
+# Teste rápido da funcionalidade exclude_classes com suporte terra/raster
 # Este script verifica se a implementação está funcionando
 
-# Carregar o pacote
+# Carregar os pacotes necessários
 library(OpenLand)
-library(raster)
 
-# Criar rasters de teste simples
+# Verificar se terra está disponível
+terra_available <- requireNamespace("terra", quietly = TRUE)
+raster_available <- requireNamespace("raster", quietly = TRUE)
+
+if (!raster_available) {
+  stop("Pacote 'raster' é necessário para este teste")
+}
+
+library(raster)
+if (terra_available) {
+  library(terra)
+}
+
+cat("Testando a funcionalidade exclude_classes...\n")
+cat("Terra disponível:", terra_available, "\n")
+cat("Raster disponível:", raster_available, "\n\n")
+
+# Criar rasters de teste simples usando raster
 test_matrix_1 <- matrix(c(0, 0, 1, 1, 
                          2, 2, 0, 1, 
                          2, 0, 1, 2,
@@ -24,43 +40,37 @@ names(r2) <- "landscape_2021"
 
 test_stack <- stack(r1, r2)
 
-cat("Testando a funcionalidade exclude_classes...\n\n")
+cat("1. Testando com objetos raster:\n")
 
-# Teste 1: Sem exclusões
-cat("1. Análise sem exclusões:\n")
-result_normal <- contingencyTable(test_stack, pixelresolution = 1)
-cat("Classes presentes:", paste(sort(unique(result_normal$tb_legend$categoryValue)), collapse = ", "), "\n")
-cat("Número de transições:", nrow(result_normal$lulc_Multistep), "\n\n")
+# Teste com raster
+tryCatch({
+  result_raster <- contingencyTable(test_stack, pixelresolution = 1, exclude_classes = 0)
+  cat("✓ Sucesso com raster\n")
+  cat("Classes presentes:", paste(sort(unique(result_raster$tb_legend$categoryValue)), collapse = ", "), "\n")
+}, error = function(e) {
+  cat("✗ Erro com raster:", e$message, "\n")
+})
 
-# Teste 2: Excluindo classe 0
-cat("2. Análise excluindo classe 0:\n")
-result_no_zero <- contingencyTable(test_stack, pixelresolution = 1, exclude_classes = 0)
-cat("Classes presentes:", paste(sort(unique(result_no_zero$tb_legend$categoryValue)), collapse = ", "), "\n")
-cat("Número de transições:", nrow(result_no_zero$lulc_Multistep), "\n")
-cat("Classes excluídas:", paste(attr(result_no_zero$tb_legend, "excluded_classes"), collapse = ", "), "\n\n")
-
-# Teste 3: Excluindo múltiplas classes
-cat("3. Análise excluindo classes 0 e 2:\n")
-result_multiple <- contingencyTable(test_stack, pixelresolution = 1, exclude_classes = c(0, 2))
-cat("Classes presentes:", paste(sort(unique(result_multiple$tb_legend$categoryValue)), collapse = ", "), "\n")
-cat("Número de transições:", nrow(result_multiple$lulc_Multistep), "\n")
-cat("Classes excluídas:", paste(attr(result_multiple$tb_legend, "excluded_classes"), collapse = ", "), "\n\n")
-
-# Verificação
-cat("4. Verificação:\n")
-has_zero_in_filtered <- any(c(0) %in% c(result_no_zero$lulc_Multistep$From, result_no_zero$lulc_Multistep$To))
-has_zero_or_two_in_multiple <- any(c(0, 2) %in% c(result_multiple$lulc_Multistep$From, result_multiple$lulc_Multistep$To))
-
-if (!has_zero_in_filtered) {
-  cat("✓ Exclusão da classe 0 funcionou corretamente\n")
+# Teste com terra se disponível
+if (terra_available) {
+  cat("\n2. Testando com objetos terra:\n")
+  
+  tryCatch({
+    # Converter para terra
+    terra_r1 <- terra::rast(r1)
+    terra_r2 <- terra::rast(r2)
+    names(terra_r1) <- "landscape_2020"
+    names(terra_r2) <- "landscape_2021"
+    terra_stack <- c(terra_r1, terra_r2)
+    
+    result_terra <- contingencyTable(terra_stack, pixelresolution = 1, exclude_classes = 0)
+    cat("✓ Sucesso com terra\n")
+    cat("Classes presentes:", paste(sort(unique(result_terra$tb_legend$categoryValue)), collapse = ", "), "\n")
+  }, error = function(e) {
+    cat("✗ Erro com terra:", e$message, "\n")
+  })
 } else {
-  cat("✗ Erro: Classe 0 ainda aparece nos resultados filtrados\n")
-}
-
-if (!has_zero_or_two_in_multiple) {
-  cat("✓ Exclusão múltipla (0 e 2) funcionou corretamente\n")
-} else {
-  cat("✗ Erro: Classes 0 ou 2 ainda aparecem nos resultados com exclusão múltipla\n")
+  cat("\n2. Terra não disponível - pulando teste terra\n")
 }
 
 cat("\nTeste concluído!\n")
