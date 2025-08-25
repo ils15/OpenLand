@@ -7,3 +7,25 @@ Meta
 docs/
 *.pdf
 docs
+
+# Development and testing files
+Copilot-Processing.md
+quick_test.R
+test_*.R
+**/test_progress_example.R
+**/performance_test.R
+
+# Development directories  
+simple_plots_*/
+TESTE_IMG/
+TESTE_RECORTE/
+scripts/
+
+# Temporary files
+Rplots.pdf
+.agentic-tools-mcp/
+
+# Keep official tests but ignore development tests
+!tests/testthat/test_*.R
+tests/testthat/test_performance_optimizations.R
+tests/testthat/test_exclude_classes.R
