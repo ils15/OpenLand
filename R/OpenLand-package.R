@@ -23,7 +23,15 @@
 #' \itemize{
 #'   \item \code{\link{summary_dir}}: Optimized directory summary with terra support
 #'   \item \code{\link{summary_map}}: Enhanced pixel counting with vectorized operations
+#'   \item \code{\link{contingencyTable}}: Land use change analysis with class exclusion options
 #'   \item \code{\link{performance_status}}: Check performance optimization status
+#' }
+#'
+#' \strong{New Features in Latest Version:}
+#' \itemize{
+#'   \item Class exclusion support in \code{contingencyTable} (exclude_classes parameter)
+#'   \item Remove background or no-data classes from land use change analysis
+#'   \item Improved workflow for handling multi-class raster datasets
 #' }
 #'
 #' @seealso The core functions in this package: \code{\link{intensityAnalysis}},

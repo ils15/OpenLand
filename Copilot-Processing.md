@@ -13,6 +13,77 @@
 - **Test coverage:** 8 test files covering major functionality
 - **Documentation:** Uses roxygen2 with comprehensive function documentation
 
+## Phase 2: Class Exclusion Feature - COMPLETED ✅
+
+### 🎯 New Feature: exclude_classes Parameter in contingencyTable
+
+#### ✅ Implementation Complete
+- **COMPLETED:** Added `exclude_classes` parameter to `contingencyTable()` function
+- **COMPLETED:** Comprehensive validation of exclude_classes input
+- **COMPLETED:** Automatic filtering of excluded classes from all result tables
+- **COMPLETED:** Enhanced documentation with usage examples
+
+#### ✅ Technical Implementation
+- **Parameter validation**: Checks for numeric vector, no NA values
+- **Cross-tabulation filtering**: Removes transitions involving excluded classes
+- **Legend updating**: Excluded classes don't appear in tb_legend
+- **Attribute storage**: Excluded classes stored as attribute for reference
+- **User feedback**: Informative messages about exclusions
+
+#### ✅ Usage Examples
+```r
+# Exclude background class (0)
+result <- contingencyTable(input_raster, exclude_classes = 0)
+
+# Exclude multiple classes (0 and 255)
+result <- contingencyTable(input_raster, exclude_classes = c(0, 255))
+
+# Check which classes were excluded
+excluded <- attr(result$tb_legend, "excluded_classes")
+```
+
+#### ✅ Quality Assurance
+- **COMPLETED:** Comprehensive test suite in `test_exclude_classes.R`
+- **COMPLETED:** Practical usage example in `examples/exclude_classes_example.R`
+- **COMPLETED:** Updated package documentation with new feature
+- **COMPLETED:** Validation functions to verify exclusions work correctly
+
+### 📈 Benefits of Class Exclusion Feature
+
+| Aspect | Before | After |
+|--------|--------|-------|
+| Background handling | Manual post-processing | Automatic exclusion |
+| No-data pixels | Included in analysis | Cleanly removed |
+| Workflow efficiency | Multi-step filtering | Single parameter |
+| Result clarity | Cluttered with irrelevant classes | Clean, focused analysis |
+
+### 🔧 Technical Details
+
+#### Function Signature Enhancement
+```r
+contingencyTable(input_raster, pixelresolution = 30, name_separator = "_", 
+                year_position = "last", name_pattern = NULL, exclude_classes = NULL)
+```
+
+#### Validation and Error Handling
+- Input type checking (must be numeric vector)
+- NA value detection and rejection
+- Informative error messages with usage guidance
+- Warning if all transitions are excluded
+
+#### Result Structure Preservation
+- All existing output structure maintained
+- Excluded classes information stored as attribute
+- Backward compatibility with existing code
+- No breaking changes to API
+
+### 🎯 Use Cases Addressed
+
+1. **Background Class Removal**: Exclude class 0 (typical background/no-data)
+2. **Multiple Exclusions**: Remove several irrelevant classes at once
+3. **Clean Analysis**: Focus on meaningful land use transitions only
+4. **Workflow Simplification**: One-step exclusion instead of post-processing
+
 ## Phase 1 Implementation Summary - COMPLETED ✅
 
 ### 🎯 Critical Performance and Modernization Improvements

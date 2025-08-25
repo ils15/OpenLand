@@ -1,7 +1,14 @@
 utils::globalVariables(c("Interval", "Period", "Year_from",
                          "Year_to", "strings01", "strings02"))
 
-#' @include demolandscape.R rasters_input.R generalfunctions.R
+## # Using custom pattern to extract year from complex names
+# # contingencyTable(input_raster = your_raster, name_pattern = "\\d{4}")
+# 
+# # Excluding background class (0) from analysis
+# # contingencyTable(input_raster = SaoLourencoBasin, exclude_classes = 0)
+# 
+# # Excluding multiple classes (0 and 255)
+# # contingencyTable(input_raster = SaoLourencoBasin, exclude_classes = c(0, 255))@include demolandscape.R rasters_input.R generalfunctions.R
 NULL
 
 #' Contingency table
@@ -19,6 +26,9 @@ NULL
 #' Options: "last" (default), "first", or a numeric position.
 #' @param name_pattern character. Regular expression pattern to extract year from names.
 #' If provided, overrides name_separator and year_position. Default is NULL.
+#' @param exclude_classes numeric vector. Class values to exclude from the analysis.
+#' Default is NULL (no exclusions). Common usage: exclude_classes = 0 to remove 
+#' background/no-data pixels, or exclude_classes = c(0, 255) for multiple exclusions.
 #'
 #' @details
 #' The function provides flexible naming conventions for input rasters with automatic
@@ -78,6 +88,13 @@ NULL
 #'    of a LUC category.
 #'   Before further analysis, one would like to change the \code{categoryName}
 #'   and \code{color} values.
+#'   }
+#'   
+#'   **Note:** If \code{exclude_classes} was used, the excluded classes will not 
+#'   appear in any of the result tables. The excluded classes information is stored
+#'   as an attribute in \code{tb_legend} and can be accessed with 
+#'   \code{attr(result$tb_legend, "excluded_classes")}.
+#'   
 #'     \itemize{
 #'         \item Therefore the category names have to be in the same order as the
 #'          \code{categoryValue}
@@ -131,7 +148,20 @@ NULL
 
 contingencyTable <-
   function(input_raster, pixelresolution = 30, name_separator = "_", 
-           year_position = "last", name_pattern = NULL) {
+           year_position = "last", name_pattern = NULL, exclude_classes = NULL) {
+
+    # Validate exclude_classes parameter
+    if (!is.null(exclude_classes)) {
+      if (!is.numeric(exclude_classes)) {
+        stop("exclude_classes must be a numeric vector")
+      }
+      if (any(is.na(exclude_classes))) {
+        stop("exclude_classes cannot contain NA values")
+      }
+      # Convert to integer to match raster values
+      exclude_classes <- as.integer(exclude_classes)
+      message("Classes to be excluded from analysis: ", paste(exclude_classes, collapse = ", "))
+    }
 
     rList <- .input_rasters(input_raster)
 
@@ -144,6 +174,23 @@ contingencyTable <-
     # compute the cross table of two rasters, then setting the columns name
     table_cross <- function(x, y) {
       contengency <- raster::crosstab(x, y, long = TRUE, progress = "text")
+      
+      # Apply class exclusions if specified
+      if (!is.null(exclude_classes)) {
+        # Filter out rows where From or To classes are in exclude_classes
+        contengency <- contengency %>%
+          dplyr::filter(
+            !get(names(contengency)[1]) %in% exclude_classes,
+            !get(names(contengency)[2]) %in% exclude_classes
+          )
+        
+        # Inform user about exclusions
+        if (nrow(contengency) > 0) {
+          message("Excluded classes: ", paste(exclude_classes, collapse = ", "))
+        } else {
+          warning("All transitions were excluded. Check your exclude_classes parameter.")
+        }
+      }
       
       # Extract years from raster names using the flexible function
       name_x <- names(x)
@@ -197,8 +244,18 @@ contingencyTable <-
     allinterval <- # calculating the total interval and the pixelValue
       as.numeric(dplyr::last(lulctable[[2]]$yearTo)) - as.numeric(dplyr::first(lulctable[[2]]$yearFrom))
 
+    # Create legend table, excluding filtered classes
     tb_legend <-
-      lulctable[[2]] %>% dplyr::distinct(From) %>% dplyr::rename(categoryValue = From)
+      lulctable[[2]] %>% 
+      dplyr::distinct(From) %>% 
+      dplyr::rename(categoryValue = From) %>%
+      dplyr::arrange(categoryValue)
+    
+    # Add excluded classes information to the legend if any were excluded
+    if (!is.null(exclude_classes) && length(exclude_classes) > 0) {
+      attr(tb_legend, "excluded_classes") <- exclude_classes
+      message("Legend created excluding classes: ", paste(exclude_classes, collapse = ", "))
+    }
 
     genCategory <- function() {paste(sample(LETTERS, size = 3, replace = FALSE), collapse = "")}
 
