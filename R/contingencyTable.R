@@ -174,17 +174,21 @@ contingencyTable <-
     table_cross <- function(x, y) {
       # Use appropriate crosstab function based on object type
       if (inherits(x, "SpatRaster") && inherits(y, "SpatRaster")) {
-        # For terra objects, use terra::crosstab if available, otherwise convert to raster
+        # For terra objects, use terra::crosstab if available
         if (exists("crosstab", where = asNamespace("terra"), mode = "function")) {
+          # Show progress message for terra operations
+          message("Computing cross-tabulation with terra (layer ", names(x), " vs ", names(y), ")...")
           contengency <- terra::crosstab(c(x, y), long = TRUE)
+          message("Cross-tabulation completed.")
         } else {
-          # Fallback: convert to raster for crosstab
+          # Fallback: convert to raster for crosstab with progress
+          message("Terra crosstab not available, using raster fallback...")
           x_raster <- raster::raster(x)
           y_raster <- raster::raster(y)
           contengency <- raster::crosstab(x_raster, y_raster, long = TRUE, progress = "text")
         }
       } else {
-        # For raster objects, use raster::crosstab
+        # For raster objects, use raster::crosstab with progress
         contengency <- raster::crosstab(x, y, long = TRUE, progress = "text")
       }
       
@@ -226,6 +230,7 @@ contingencyTable <-
 
 
     # Create table for first and last raster comparison
+    message("Computing one-step transition matrix...")
     if (inherits(rList, "SpatRaster")) {
       table_one <- table_cross(rList[[1]], rList[[terra::nlyr(rList)]])
     } else {
@@ -234,22 +239,33 @@ contingencyTable <-
 
     if (n_raster == 2) {
       table_multi <- table_one
+      message("Two rasters detected: one-step analysis completed.")
     }
     else {
       # Handle multi-step analysis
+      message("Computing multi-step transition matrices for ", n_raster, " rasters...")
       if (inherits(rList, "SpatRaster")) {
         # For SpatRaster, convert to list for processing
+        message("Converting SpatRaster layers for multi-step analysis...")
         rList_multi <- lapply(1:terra::nlyr(rList), function(i) rList[[i]])
       } else {
+        message("Unstacking raster layers for multi-step analysis...")
         rList_multi <- raster::unstack(rList)
       }
+      
+      # Show progress for multi-step analysis
+      num_comparisons <- length(rList_multi) - 1
+      message("Processing ", num_comparisons, " sequential comparisons...")
+      
       table_multi <- Reduce(rbind,
                             mapply(function(x, y)
                               table_cross(x, y), rList_multi[1:(length(rList_multi) - 1)],
                               rList_multi[2:length(rList_multi)], SIMPLIFY = FALSE))
+      
+      message("Multi-step analysis completed successfully.")
     }
 
-
+    message("Processing transition data and calculating statistics...")
     lulc <- list(oneStep = table_one, multiStep = table_multi)
 
     lulctable <-
@@ -304,5 +320,11 @@ contingencyTable <-
         totalArea = areaTotal[1, c(2,3)],
         totalInterval = allinterval
       )
+    
+    # Final completion message
+    message("Contingency table analysis completed successfully!")
+    message("Result contains ", nrow(contingencyTable$lulc_Multistep), " transitions across ", 
+            nrow(contingencyTable$tb_legend), " land use classes.")
+    
     return(contingencyTable)
   }
