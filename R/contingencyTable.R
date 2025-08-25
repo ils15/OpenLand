@@ -123,14 +123,6 @@ contingencyTable <-
 
     n_raster <- raster::nlayers(rList)
 
-contingencyTable <-
-  function(input_raster, pixelresolution = 30, name_separator = "_", 
-           year_position = "last", name_pattern = NULL) {
-
-    rList <- .input_rasters(input_raster)
-
-    n_raster <- raster::nlayers(rList)
-
     if (n_raster < 2) {
       stop('contingencyTable needs at least 2 rasters')
     }
