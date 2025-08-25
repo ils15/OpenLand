@@ -21,7 +21,21 @@ NULL
 #' If provided, overrides name_separator and year_position. Default is NULL.
 #'
 #' @details
-#' The function provides flexible naming conventions for input rasters:
+#' The function provides flexible naming conventions for input rasters with automatic
+#' handling of R's name modifications:
+#' \itemize{
+#'   \item Standard: "landscape_2020", "landscape_2021" (default format)
+#'   \item Different separator: use name_separator = "." or name_separator = "-"
+#'   \item Year first: "2020_landscape" (use year_position = "first")
+#'   \item Complex patterns: use name_pattern = "[0-9]{4}" for direct year extraction
+#' }
+#' 
+#' **Important:** R automatically modifies raster names:
+#' \itemize{
+#'   \item Hyphens (-) become dots (.)
+#'   \item Names starting with numbers get "X" prefix (e.g., "2020_data" -> "X2020_data")
+#' }
+#' The function detects and handles these modifications automatically with informative warnings.
 #' \itemize{
 #'   \item Default: "text_YEAR" format (e.g., "landscape_2020")
 #'   \item Custom separator: Use \code{name_separator} for different separators

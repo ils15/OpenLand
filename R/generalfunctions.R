@@ -207,10 +207,40 @@ extract_year_from_name <- function(name, separator = "_",
     }
     return(year_match)
   } else {
+    # Auto-detect R modifications and adjust separator
+    original_separator <- separator
+    
+    # Handle common R name modifications
+    if (separator == "-" && !grepl("-", name) && grepl("\\.", name)) {
+      separator <- "."
+      warning(paste("R converted hyphens to dots in raster names. Using '.' instead of '-' for:", name))
+    }
+    
+    # Remove R's automatic "X" prefix if present when extracting from beginning
+    clean_name <- name
+    x_prefix_removed <- FALSE
+    if (position == "first" && grepl("^X[0-9]", name)) {
+      clean_name <- sub("^X", "", name)
+      x_prefix_removed <- TRUE
+      warning(paste("R added 'X' prefix to numeric name. Removing 'X' from:", name))
+    }
+    
     # Use separator and position
-    parts <- strsplit(name, separator, fixed = TRUE)[[1]]
+    parts <- strsplit(clean_name, separator, fixed = TRUE)[[1]]
     if (length(parts) < 2) {
-      stop(paste("Name", name, "does not contain separator", separator))
+      # Enhanced error message with suggestions
+      suggested_separators <- c("_", ".", "-")
+      found_separators <- suggested_separators[sapply(suggested_separators, function(s) grepl(s, name, fixed = TRUE))]
+      
+      error_msg <- paste("Name", name, "does not contain separator", original_separator)
+      if (length(found_separators) > 0) {
+        error_msg <- paste(error_msg, "\nFound these separators in the name:", paste(found_separators, collapse = ", "))
+        error_msg <- paste(error_msg, "\nTry using name_separator =", paste0("'", found_separators[1], "'"))
+      }
+      if (grepl("[0-9]{4}", name)) {
+        error_msg <- paste(error_msg, "\nAlternatively, use name_pattern = '[0-9]{4}' to extract the year directly")
+      }
+      stop(error_msg)
     }
     
     if (position == "last") {
@@ -219,7 +249,7 @@ extract_year_from_name <- function(name, separator = "_",
       year <- parts[1]
     } else if (is.numeric(position)) {
       if (position > length(parts) || position < 1) {
-        stop(paste("Position", position, "is out of range for name:", name))
+        stop(paste("Position", position, "is out of range for name:", name, "with", length(parts), "parts"))
       }
       year <- parts[position]
     } else {
@@ -228,7 +258,14 @@ extract_year_from_name <- function(name, separator = "_",
     
     # Validate that extracted part looks like a year
     if (!grepl("^[0-9]{4}$", year)) {
-      stop(paste("Extracted part", year, "from name", name, "does not look like a 4-digit year"))
+      # Enhanced error with suggestions
+      error_msg <- paste("Extracted part '", year, "' from name '", name, "' does not look like a 4-digit year", sep = "")
+      if (grepl("[0-9]{4}", name)) {
+        found_years <- stringr::str_extract_all(name, "[0-9]{4}")[[1]]
+        error_msg <- paste(error_msg, "\nFound these 4-digit numbers:", paste(found_years, collapse = ", "))
+        error_msg <- paste(error_msg, "\nConsider using name_pattern = '[0-9]{4}' instead")
+      }
+      stop(error_msg)
     }
     
     return(year)
