@@ -252,8 +252,9 @@ acc_changes <- function(path) {
   difflist <- mapply(
     function(x, y) {
       if (inherits(x, "SpatRaster") && inherits(y, "SpatRaster")) {
-        # For terra objects, use terra::app
-        terra::app(terra::c(x, y), fun = function(vals) {
+        # For terra objects, use terra::app with combined rasters
+        combined <- c(x, y)  # Use base R c() function, not terra::c()
+        terra::app(combined, fun = function(vals) {
           ifelse(vals[1] != vals[2], 1, 0)
         })
       } else {
