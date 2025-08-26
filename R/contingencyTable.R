@@ -35,7 +35,7 @@ NULL
     return(tab)
   }
   # Stack the rasters so each block has both layers
-  rast_stack <- c(r1, r2)
+  rast_stack <- terra::c(r1, r2)
   block_results <- terra::app(rast_stack, fun = block_fun, blocks = TRUE)
   # block_results is a list of data.frames, one per block
   combined <- do.call(rbind, block_results)
@@ -263,7 +263,7 @@ contingencyTable <-
             # Convert to terra for better performance
             x_terra <- terra::rast(x)
             y_terra <- terra::rast(y)
-            contengency <- terra::crosstab(c(x_terra, y_terra), long = TRUE)
+            contengency <- terra::crosstab(terra::c(x_terra, y_terra), long = TRUE)
             if (is.null(step_num)) {
               message("Optimized terra cross-tabulation completed.")
             }
