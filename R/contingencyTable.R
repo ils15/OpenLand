@@ -4,100 +4,6 @@ utils::globalVariables(c("Interval", "Period", "Year_from",
 #' @include demolandscape.R rasters_input.R generalfunctions.R
 NULL
 
-#' Contingency table with enhanced performance optimizations
-#'
-#' Extracts Land Use and Cover (LUC) transitions for all input grids of the time series 
-#' with advanced performance optimizations including parallel processing and terra 
-#' package acceleration.
-#'
-#' @param input_raster path (character), Raster* object or list of Raster*
-#' objects. See \cr \code{\link[raster]{raster}} for more information about
-#' supported file types. Supports both raster and terra formats for optimal performance.
-#' @param pixelresolution numeric. The pixel spatial resolution in meter.
-#' @param name_separator character. The separator used to split the raster names. 
-#' Default is "_" (underscore).
-#' @param year_position character. Position of the year in the split name. 
-#' Options: "last" (default), "first", or a numeric position.
-#' @param name_pattern character. Regular expression pattern to extract year from names.
-#' If provided, overrides name_separator and year_position. Default is NULL.
-#' @param exclude_classes numeric vector. Class values to exclude from the analysis.
-#' Default is NULL (no exclusions). Common usage: exclude_classes = 0 to remove 
-#' background/no-data pixels, or exclude_classes = c(0, 255) for multiple exclusions.
-#' **Important:** When exclude_classes is specified, the function creates a filtered
-#' raster stack where excluded class values are replaced with NA, ensuring consistency
-#' between the contingency tables and the raster data for subsequent analyses.
-#' @param parallel logical. Enable parallel processing for multi-step analysis. 
-#' Default is TRUE. Provides 2-4x speedup on multi-core systems while maintaining 
-#' sequential fallback compatibility. Set to FALSE to use sequential processing.
-#' @param n_cores integer. Number of cores to use for parallel processing. 
-#' Default is NULL (auto-detect available cores - 1). Automatically adjusts for 
-#' system capabilities and respects R session limits.
-#' @param chunk_size integer. Size of chunks for processing large rasters. 
-#' Default is NULL (auto-determine based on available memory). Enables memory-efficient
-#' processing of datasets larger than available RAM.
-#'
-#' @details
-#' The function provides flexible naming conventions for input rasters with automatic
-#' handling of R's name modifications:
-#' \itemize{
-#'   \item Standard: "landscape_2020", "landscape_2021" (default format)
-#'   \item Different separator: use name_separator = "." or name_separator = "-"
-#'   \item Year first: "2020_landscape" (use year_position = "first")
-#'   \item Complex patterns: use name_pattern = "[0-9]{4}" for direct year extraction
-#' }
-#' 
-#' **Performance Optimizations:**
-#' The function automatically applies performance optimizations based on available packages:
-#' \itemize{
-#'   \item **Terra Acceleration**: When terra package is available, automatically converts 
-#'   raster objects to SpatRaster for 2-3x faster cross-tabulation
-#'   \item **Multi-step Optimization**: Uses native terra layer extraction for 1.5-2x 
-#'   faster multi-step analysis
-#'   \item **Progress Reporting**: Shows percentage-based progress indicators
-#'   \item **Automatic Fallback**: Maintains full compatibility with raster package
-#' }
-#' 
-#' **Class Exclusion Behavior:**
-#' When exclude_classes is specified, the function creates a filtered raster stack where
-#' excluded class values are replaced with NA. This ensures consistency between the 
-#' contingency tables and the raster data, preventing issues in subsequent functions that
-#' depend on the stack having the same class structure as the analysis results.
-#' 
-#' **Important:** R automatically modifies raster names:
-#' \itemize{
-#'   \item Hyphens (-) become dots (.)
-#'   \item Names starting with numbers get "X" prefix (e.g., "2020_data" -> "X2020_data")
-#' }
-#' The function detects and handles these modifications automatically with informative warnings.
-#' \itemize{
-#'   \item Default: "text_YEAR" format (e.g., "landscape_2020")
-#'   \item Custom separator: Use \code{name_separator} for different separators
-#'   \item Year position: Use \code{year_position} to specify where the year appears
-#'   \item Pattern matching: Use \code{name_pattern} for complex naming schemes
-#' }
-#'
-#' @import dplyr
-#' @importFrom stringr str_extract
-#'
-#' @return A list containing 5 objects: lulc_Multistep (multi-period contingency table),
-#'   lulc_Onestep (full period contingency table), tb_legend (category legend),
-#'   totalArea (landscape area), and totalInterval (time interval in years).
-#'
-#'
-#' @export
-#'
-#' @importFrom raster unstack crosstab compareRaster raster values stack overlay brick
-#' @importFrom terra nlyr crosstab
-#'
-#' @examples
-#' \donttest{
-#' # Basic usage with default naming
-#' data(SL_2002_2014)
-#' print(SL_2002_2014$lulc_Multistep)
-#' }
-#'
-#'
-
 # Helper function for chunked processing
 .process_chunks <- function(r1, r2, chunk_size) {
   if (!inherits(r1, "SpatRaster") || !inherits(r2, "SpatRaster")) {
@@ -147,6 +53,75 @@ NULL
   return(aggregated)
 }
 
+#' Contingency table with enhanced performance optimizations
+#'
+#' Extracts Land Use and Cover (LUC) transitions for all input grids of the time series 
+#' with advanced performance optimizations including parallel processing and terra 
+#' package acceleration.
+#'
+#' @param input_raster path (character), Raster* object or list of Raster*
+#' objects. See \cr \code{\link[raster]{raster}} for more information about
+#' supported file types. Supports both raster and terra formats for optimal performance.
+#' @param pixelresolution numeric. The pixel spatial resolution in meter.
+#' @param name_separator character. The separator used to split the raster names. 
+#' Default is "_" (underscore).
+#' @param year_position character. Position of the year in the split name. 
+#' Options: "last" (default), "first", or a numeric position.
+#' @param name_pattern character. Regular expression pattern to extract year from names.
+#' If provided, overrides name_separator and year_position. Default is NULL.
+#' @param exclude_classes numeric vector. Class values to exclude from the analysis.
+#' Default is NULL (no exclusions). Common usage: exclude_classes = 0 to remove 
+#' background/no-data pixels, or exclude_classes = c(0, 255) for multiple exclusions.
+#' **Important:** When exclude_classes is specified, the function creates a filtered
+#' raster stack where excluded class values are replaced with NA, ensuring consistency
+#' between the contingency tables and the raster data for subsequent analyses.
+#' @param parallel logical. Enable parallel processing for multi-step analysis. 
+#' Default is TRUE. Provides 2-4x speedup on multi-core systems while maintaining 
+#' reproducible results.
+#' @param n_cores integer. Number of cores to use for parallel processing. 
+#' Default is NULL (auto-detect, uses detectCores() - 1).
+#' @param chunk_size integer. Number of cells to process per chunk for large rasters.
+#' Default is NULL (auto-optimized based on available memory). Useful for memory 
+#' management when processing very large rasters that exceed available RAM.
+#'
+#' @details This function performs cross-tabulation analysis between all time pairs 
+#' in the input raster series. For raster series with n layers, it generates n-1 
+#' pairwise comparisons (2002-2008, 2008-2010, etc.) plus one full period comparison 
+#' (2002-2014).
+#'
+#' **Flexible Naming Support:**
+#' 
+#' The function automatically handles R's naming modifications:
+#' \itemize{
+#'   \item Hyphens → dots: "landscape-2020" becomes "landscape.2020"  
+#'   \item Numeric prefixes → "X" prefix: "2020_data" becomes "X2020_data"
+#' }
+#' The function detects and handles these modifications automatically with informative warnings.
+#' \itemize{
+#'   \item Default: "text_YEAR" format (e.g., "landscape_2020")
+#'   \item Custom separator: Use \code{name_separator} for different separators
+#'   \item Year position: Use \code{year_position} to specify where the year appears
+#'   \item Pattern matching: Use \code{name_pattern} for complex naming schemes
+#' }
+#'
+#' @import dplyr
+#' @importFrom stringr str_extract
+#'
+#' @return A list containing 5 objects: lulc_Multistep (multi-period contingency table),
+#'   lulc_Onestep (full period contingency table), tb_legend (category legend),
+#'   totalArea (landscape area), and totalInterval (time interval in years).
+#'
+#' @export
+#'
+#' @importFrom raster unstack crosstab compareRaster raster values stack overlay brick
+#' @importFrom terra nlyr crosstab
+#'
+#' @examples
+#' \donttest{
+#' # Basic usage with default naming
+#' data(SL_2002_2014)
+#' print(SL_2002_2014$lulc_Multistep)
+#' }
 contingencyTable <-
   function(input_raster, pixelresolution = 30, name_separator = "_", 
            year_position = "last", name_pattern = NULL, exclude_classes = NULL,
