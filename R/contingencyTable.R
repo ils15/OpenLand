@@ -4,7 +4,7 @@ utils::globalVariables(c("Interval", "Period", "Year_from",
 #' @include demolandscape.R rasters_input.R generalfunctions.R
 NULL
 
-# Helper function for chunked processing
+# Helper function for enhanced chunked processing with memory optimization
 .process_chunks <- function(r1, r2, chunk_size) {
   if (!inherits(r1, "SpatRaster") || !inherits(r2, "SpatRaster")) {
     stop("Chunked processing requires terra SpatRaster objects")
@@ -13,43 +13,87 @@ NULL
   # Get raster dimensions
   nr <- terra::nrow(r1)
   nc <- terra::ncol(r1)
-  
-  # Calculate optimal chunks
   total_cells <- nr * nc
+  
+  # Performance optimization: Dynamic chunk size based on available memory
   if (chunk_size <= 0) {
-    chunk_size <- min(1000000, total_cells)  # Default to 1M cells max
+    # Estimate memory usage: 8 bytes per cell for two rasters + overhead
+    available_memory <- as.numeric(system("awk '/MemAvailable/ {print $2}' /proc/meminfo", intern = TRUE)) * 1024
+    if (is.na(available_memory) || available_memory == 0) {
+      # Fallback if memory detection fails
+      chunk_size <- min(1000000, total_cells)
+    } else {
+      # Use 25% of available memory for chunk processing
+      max_chunk_memory <- available_memory * 0.25
+      optimal_chunk_size <- floor(max_chunk_memory / (8 * 2))  # 8 bytes per value, 2 rasters
+      chunk_size <- min(optimal_chunk_size, total_cells, 2000000)  # Cap at 2M cells
+    }
   }
   
   rows_per_chunk <- max(1, floor(chunk_size / nc))
   n_chunks <- ceiling(nr / rows_per_chunk)
   
-  message("Processing ", total_cells, " cells in ", n_chunks, " chunks...")
+  message("⚡ Processing ", total_cells, " cells in ", n_chunks, " optimized chunks...")
+  message("   Chunk size: ", format(chunk_size, big.mark = ","), " cells per chunk")
   
-  # Process chunks
+  # Performance optimization: Pre-allocate results with appropriate size
   chunk_results <- vector("list", n_chunks)
+  
+  # Process chunks with enhanced error handling and progress
   for (i in 1:n_chunks) {
     start_row <- (i - 1) * rows_per_chunk + 1
     end_row <- min(i * rows_per_chunk, nr)
     
-    # Extract chunk
-    chunk_ext <- terra::ext(r1)[c(1, 2, start_row, end_row)]
-    r1_chunk <- terra::crop(r1, chunk_ext)
-    r2_chunk <- terra::crop(r2, chunk_ext)
+    # Show progress for large datasets
+    if (n_chunks > 5) {
+      cat("\r   Processing chunk", i, "of", n_chunks, "...")
+      flush.console()
+    }
     
-    # Process chunk - Use base c() instead of terra::c()
-    chunk_results[[i]] <- terra::crosstab(c(r1_chunk, r2_chunk), 
-                                         useNA = FALSE, long = TRUE)
+    tryCatch({
+      # Extract chunk efficiently
+      chunk_ext <- terra::ext(r1)[c(1, 2, start_row, end_row)]
+      r1_chunk <- terra::crop(r1, chunk_ext)
+      r2_chunk <- terra::crop(r2, chunk_ext)
+      
+      # Process chunk with enhanced crosstab
+      chunk_results[[i]] <- terra::crosstab(c(r1_chunk, r2_chunk), 
+                                           useNA = FALSE, long = TRUE)
+      
+      # Performance optimization: Clear chunk data from memory immediately  
+      rm(r1_chunk, r2_chunk)
+      if (i %% 10 == 0) gc(verbose = FALSE)  # Periodic garbage collection
+      
+    }, error = function(e) {
+      stop("Error processing chunk ", i, ": ", e$message)
+    })
   }
   
-  # Combine results
+  if (n_chunks > 5) cat("\n")  # New line after progress
+  
+  # Performance optimization: Efficient combination using data.table-style operations
+  message("   Combining chunk results...")
   combined <- do.call(rbind, chunk_results)
   
-  # Aggregate counts for duplicate From-To combinations
+  # Performance optimization: Use faster aggregation
+  # Convert to factors for faster grouping if many unique values
+  if (nrow(combined) > 10000) {
+    combined[, 1] <- as.factor(combined[, 1])
+    combined[, 2] <- as.factor(combined[, 2])
+  }
+  
   aggregated <- aggregate(combined[, 3], 
                          by = list(From = combined[, 1], To = combined[, 2]), 
                          FUN = sum)
   colnames(aggregated) <- c('From', 'To', 'count')
   
+  # Convert factors back to numeric if they were converted
+  if (is.factor(aggregated$From)) {
+    aggregated$From <- as.numeric(as.character(aggregated$From))
+    aggregated$To <- as.numeric(as.character(aggregated$To))
+  }
+  
+  message("✓ Chunked processing completed successfully")
   return(aggregated)
 }
 

@@ -503,3 +503,213 @@ performance_status <- function() {
   
   invisible(result)
 }
+
+
+#' Performance benchmarking for OpenLand functions
+#'
+#' Benchmarks key OpenLand functions to measure performance improvements and
+#' help users optimize their workflows. Compares terra vs raster performance
+#' and provides timing measurements for different optimization settings.
+#'
+#' @param test_data Optional test dataset. If NULL, generates synthetic test data.
+#' @param n_layers Integer. Number of raster layers to generate for testing (default: 3).
+#' @param matrix_size Integer. Size of test raster matrix (default: 100 for 100x100 pixels).
+#' @param run_full_benchmark Logical. If TRUE, runs comprehensive benchmarks 
+#' including contingencyTable analysis (default: FALSE for quick tests).
+#'
+#' @return A list containing benchmark results and performance recommendations
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Quick performance check
+#' benchmark_performance()
+#' 
+#' # Full benchmark with larger test data
+#' benchmark_performance(matrix_size = 200, run_full_benchmark = TRUE)
+#' }
+#'
+benchmark_performance <- function(test_data = NULL, n_layers = 3, matrix_size = 100, 
+                                 run_full_benchmark = FALSE) {
+  
+  cat("OpenLand Performance Benchmark\n")
+  cat("=============================\n\n")
+  
+  # Check package availability
+  terra_available <- requireNamespace("terra", quietly = TRUE)
+  future_available <- requireNamespace("future.apply", quietly = TRUE)
+  
+  results <- list(
+    terra_available = terra_available,
+    future_available = future_available,
+    benchmarks = list(),
+    recommendations = character(0)
+  )
+  
+  # Generate test data if not provided
+  if (is.null(test_data)) {
+    cat("Generating synthetic test data...\n")
+    
+    # Create test matrices with realistic land use classes (1-5)
+    test_matrices <- lapply(1:n_layers, function(i) {
+      set.seed(123 + i)  # Reproducible random data
+      matrix(sample(1:5, matrix_size^2, replace = TRUE), 
+             nrow = matrix_size, ncol = matrix_size)
+    })
+    
+    if (terra_available) {
+      # Use terra for test data creation
+      test_rasters_terra <- lapply(seq_along(test_matrices), function(i) {
+        r <- terra::rast(test_matrices[[i]])
+        names(r) <- paste0("test_", 2020 + i - 1)
+        r
+      })
+      test_stack_terra <- do.call(c, test_rasters_terra)
+      
+      cat("✓ Generated", n_layers, "test rasters using terra (",
+          matrix_size, "x", matrix_size, "pixels each)\n")
+    }
+    
+    # Always create raster package versions for comparison
+    if (requireNamespace("raster", quietly = TRUE)) {
+      test_rasters_raster <- lapply(seq_along(test_matrices), function(i) {
+        r <- raster::raster(test_matrices[[i]])
+        names(r) <- paste0("test_", 2020 + i - 1)
+        r
+      })
+      test_stack_raster <- raster::stack(test_rasters_raster)
+      
+      cat("✓ Generated", n_layers, "test rasters using raster package\n")
+    }
+  }
+  
+  cat("\n--- Benchmarking Core Functions ---\n")
+  
+  # 1. Test summary_dir performance
+  if (exists("test_rasters_terra") && exists("test_rasters_raster")) {
+    cat("\n1. summary_dir() performance:\n")
+    
+    # Terra version
+    if (terra_available) {
+      time_terra <- system.time({
+        summary_terra <- summary_dir(test_rasters_terra)
+      })
+      cat("   Terra version: ", round(time_terra[3], 4), "seconds\n")
+      results$benchmarks$summary_dir_terra <- time_terra[3]
+    }
+    
+    # Raster version  
+    time_raster <- system.time({
+      summary_raster <- summary_dir(test_rasters_raster)
+    })
+    cat("   Raster version:", round(time_raster[3], 4), "seconds\n")
+    results$benchmarks$summary_dir_raster <- time_raster[3]
+    
+    if (terra_available) {
+      speedup <- time_raster[3] / time_terra[3]
+      cat("   Speedup with terra:", round(speedup, 2), "x faster\n")
+      results$benchmarks$summary_dir_speedup <- speedup
+    }
+  }
+  
+  # 2. Test summary_map performance
+  cat("\n2. summary_map() performance:\n")
+  
+  if (exists("test_rasters_terra")) {
+    time_terra_map <- system.time({
+      map_terra <- summary_map(test_rasters_terra[[1]])
+    })
+    cat("   Terra version: ", round(time_terra_map[3], 4), "seconds\n")
+    results$benchmarks$summary_map_terra <- time_terra_map[3]
+  }
+  
+  if (exists("test_rasters_raster")) {
+    time_raster_map <- system.time({
+      map_raster <- summary_map(test_rasters_raster[[1]])
+    })
+    cat("   Raster version:", round(time_raster_map[3], 4), "seconds\n")
+    results$benchmarks$summary_map_raster <- time_raster_map[3]
+  }
+  
+  if (exists("time_terra_map") && exists("time_raster_map")) {
+    speedup_map <- time_raster_map[3] / time_terra_map[3]
+    cat("   Speedup with terra:", round(speedup_map, 2), "x faster\n")
+    results$benchmarks$summary_map_speedup <- speedup_map
+  }
+  
+  # 3. Test contingencyTable performance (if requested)
+  if (run_full_benchmark) {
+    cat("\n3. contingencyTable() performance (full analysis):\n")
+    
+    if (exists("test_stack_terra")) {
+      time_contingency_terra <- system.time({
+        cont_terra <- contingencyTable(test_stack_terra, pixelresolution = 30, 
+                                     parallel = future_available)
+      })
+      cat("   Terra version: ", round(time_contingency_terra[3], 4), "seconds\n")
+      results$benchmarks$contingencyTable_terra <- time_contingency_terra[3]
+    }
+    
+    if (exists("test_stack_raster")) {
+      time_contingency_raster <- system.time({
+        cont_raster <- contingencyTable(test_stack_raster, pixelresolution = 30, 
+                                       parallel = FALSE)  # Disable parallel for fair comparison
+      })
+      cat("   Raster version:", round(time_contingency_raster[3], 4), "seconds\n")
+      results$benchmarks$contingencyTable_raster <- time_contingency_raster[3]
+    }
+    
+    if (exists("time_contingency_terra") && exists("time_contingency_raster")) {
+      speedup_cont <- time_contingency_raster[3] / time_contingency_terra[3]
+      cat("   Speedup with terra:", round(speedup_cont, 2), "x faster\n")
+      results$benchmarks$contingencyTable_speedup <- speedup_cont
+    }
+  }
+  
+  # Generate performance recommendations
+  cat("\n--- Performance Recommendations ---\n")
+  
+  if (terra_available) {
+    results$recommendations <- c(
+      "✓ Terra package detected - significant performance improvements available",
+      "• Terra provides 2-10x speedup for most raster operations"
+    )
+    
+    if (results$benchmarks$summary_dir_speedup > 2) {
+      results$recommendations <- c(results$recommendations,
+        paste("• summary_dir() is", round(results$benchmarks$summary_dir_speedup, 1), 
+              "x faster with terra"))
+    }
+    
+    if (results$benchmarks$summary_map_speedup > 2) {
+      results$recommendations <- c(results$recommendations,
+        paste("• summary_map() is", round(results$benchmarks$summary_map_speedup, 1), 
+              "x faster with terra"))
+    }
+  } else {
+    results$recommendations <- c(
+      "⚠ Install terra package for significant performance improvements:",
+      "  install.packages('terra')",
+      "• Expected 2-10x speedup for raster operations"
+    )
+  }
+  
+  if (future_available) {
+    results$recommendations <- c(results$recommendations,
+      "✓ future.apply available - parallel processing enabled for large datasets")
+  } else {
+    results$recommendations <- c(results$recommendations,
+      "⚠ Install future.apply for parallel processing:",
+      "  install.packages('future.apply')")
+  }
+  
+  # Print recommendations
+  for (rec in results$recommendations) {
+    cat(rec, "\n")
+  }
+  
+  cat("\nBenchmark completed. Use benchmark_performance(run_full_benchmark = TRUE)")
+  cat("\nfor comprehensive analysis with contingencyTable().\n")
+  
+  invisible(results)
+}

@@ -12,13 +12,16 @@
 #' Aldwaik and Pontius (2012), with tools for generating standardized multilevel 
 #' output graphics and comprehensive change detection algorithms.
 #'
-#' @section Performance Optimizations (v1.0.3.9000+):
+#' @section Performance Optimizations (v1.1.0):
 #' \describe{
+#'   \item{Enhanced Core Functions}{Vectorized operations and optimized algorithms in intensityAnalysis}
+#'   \item{Advanced Memory Management}{Dynamic chunk sizing based on available system memory}
 #'   \item{Terra Integration}{Optional terra package support for 2-3x faster raster processing}
-#'   \item{Parallel Processing}{Multi-core support for large dataset analysis}
+#'   \item{Parallel Processing}{Multi-core support for large dataset analysis with future.apply}
 #'   \item{Memory Efficiency}{Improved memory management for large raster time series}
 #'   \item{Backward Compatibility}{Full compatibility maintained with raster package}
-#'   \item{Chunked Processing}{Handle datasets larger than available RAM}
+#'   \item{Chunked Processing}{Handle datasets larger than available RAM with intelligent optimization}
+#'   \item{Performance Monitoring}{Built-in benchmarking and optimization status reporting}
 #' }
 #'
 #' \strong{Key Functions:}
@@ -26,12 +29,18 @@
 #'   \item \code{\link{summary_dir}}: Optimized directory summary with terra support
 #'   \item \code{\link{summary_map}}: Enhanced pixel counting with vectorized operations
 #'   \item \code{\link{contingencyTable}}: Land use change analysis with class exclusion options
+#'   \item \code{\link{intensityAnalysis}}: Enhanced performance with vectorized operations
 #'   \item \code{\link{performance_status}}: Check performance optimization status
+#'   \item \code{\link{benchmark_performance}}: Comprehensive performance benchmarking
 #' }
 #'
-#' \strong{New Features in Latest Version:}
+#' \strong{New Features in Version 1.1.0:}
 #' \itemize{
-#'   \item Class exclusion support in \code{contingencyTable} (exclude_classes parameter)
+#'   \item Enhanced vectorized operations in \code{intensityAnalysis} for faster computation
+#'   \item Dynamic memory optimization with intelligent chunk sizing
+#'   \item Performance benchmarking suite for measuring optimization gains
+#'   \item Advanced parallel processing with future.apply integration
+#'   \item Comprehensive performance monitoring and optimization recommendations
 #'   \item Remove background or no-data classes from land use change analysis
 #'   \item Improved workflow for handling multi-class raster datasets
 #' }

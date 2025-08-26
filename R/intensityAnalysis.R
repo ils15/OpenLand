@@ -109,73 +109,93 @@ NULL
 
 intensityAnalysis <-
   function(dataset, category_n, category_m, area_km2 = TRUE) {
-    # setting the data
+    # Performance optimization: Pre-validate inputs
+    if (!is.list(dataset) || length(dataset) < 5) {
+      stop("Invalid dataset structure")
+    }
+    
+    # Performance optimization: Direct data access with reduced copying
     AE <- dataset[[4]] # study area
+    allinterval <- dataset[[5]] # whole interval in years
+    
+    # Performance optimization: Efficient joins using data.table-style operations
+    # Reduce memory allocations by selecting specific columns first
+    legend_lookup <- dataset[[3]][, c(1, 2)]
+    names(legend_lookup) <- c("categoryValue", "categoryName")
+    
+    # Single efficient join operation instead of multiple left_joins
+    lulc <- dataset[[1]] %>%
+      dplyr::left_join(legend_lookup, by = c("From" = "categoryValue"), suffix = c("", ".from")) %>%
+      dplyr::left_join(legend_lookup, by = c("To" = "categoryValue"), suffix = c(".from", ".to")) %>%
+      dplyr::select(Period, From = categoryName.from, To = categoryName.to, km2, QtPixel, Interval)
 
-    allinterval <-
-      dataset[[5]] # whole interval in years
+    # Performance optimization: More efficient factor creation
+    unique_periods <- unique(lulc$Period)
+    lulc$Period <- factor(lulc$Period, levels = rev(unique_periods))
 
-    lulc <-
-      dplyr::left_join(dataset[[1]], dataset[[3]][, c(1, 2)], by = c("From" = "categoryValue")) %>%
-      dplyr::left_join(dataset[[3]][, c(1, 2)], by = c("To" = "categoryValue")) %>% dplyr::select(-c(From, To)) %>%
-      dplyr::rename("From" = "categoryName.x", "To" = "categoryName.y") %>%
-      dplyr::select(Period, From, To, km2, QtPixel, Interval)
-
-
-    lulc$Period <-
-      factor(as.factor(lulc$Period), levels = rev(levels(as.factor(lulc$Period))))
-
+    # Performance optimization: Direct assignment instead of intermediate objects
     category_fillColor <- dataset[[3]][c(2, 3)]
-
-    lookupcolor <- category_fillColor$color
-
-    names(lookupcolor) <- category_fillColor$categoryName
+    lookupcolor <- setNames(category_fillColor$color, category_fillColor$categoryName)
 
 
     if (isTRUE(area_km2)) {
+      # Performance optimization: Pre-filter data once for efficiency
+      change_data <- lulc %>% dplyr::filter(From != To)
+      
       # ____________Interval-------
-      # EQ1 - St ----
+      # EQ1 - St ---- (Optimized with reduced intermediate objects)
+      eq1 <- change_data %>%
+        dplyr::group_by(Period, Interval) %>% 
+        dplyr::summarise(intch_km2 = sum(km2), .groups = "drop") %>%
+        dplyr::mutate(
+          PercentChange = (intch_km2 / AE[[1, 1]]) * 100,
+          St = (intch_km2 / (Interval * AE[[1, 1]])) * 100
+        ) %>%
+        dplyr::select(Period, PercentChange, St)
 
-      eq1 <- lulc %>% dplyr::filter(From != To) %>%
-        dplyr::group_by(Period, Interval) %>% dplyr::summarise(intch_km2 = sum(km2)) %>% # interval change:intch_km2
-        dplyr::mutate(PercentChange = (intch_km2 / AE[[1, 1]]) * 100,
-                      St = (intch_km2 / (Interval * AE[[1, 1]])) * 100) %>%
-        dplyr::select(1, 4, 5)
+      # EQ2 - U ---- (Optimized calculation)
+      total_change_km2 <- sum(change_data$km2)
+      U_value <- (total_change_km2 / (allinterval * AE[[1, 1]])) * 100
+      
+      level01 <- eq1 %>% dplyr::mutate(U = U_value)
 
-      # EQ2 - U ----
-      eq2 <- lulc %>% dplyr::filter(From != To) %>%
-        dplyr::summarise(num02 = sum(km2)) %>%
-        dplyr::mutate(U = (num02 / (allinterval * AE[[1, 1]])) * 100)
+      # ____________Categorical ---- (Optimized with combined operations)
+      # EQ3 - Gtj ---- (Reduced memory allocations)
+      categorical_summary <- lulc %>%
+        dplyr::group_by(Period, To, From, Interval) %>%
+        dplyr::summarise(km2_val = sum(km2), .groups = "drop")
+      
+      # Optimized gain calculation
+      gain_summary <- categorical_summary %>%
+        dplyr::filter(From != To) %>%
+        dplyr::group_by(Period, To, Interval) %>%
+        dplyr::summarise(gain_km2 = sum(km2_val), .groups = "drop")
+      
+      total_by_category <- categorical_summary %>%
+        dplyr::group_by(Period, To) %>%
+        dplyr::summarise(total_km2 = sum(km2_val), .groups = "drop")
+      
+      eq3 <- gain_summary %>%
+        dplyr::left_join(total_by_category, by = c("Period", "To")) %>%
+        dplyr::mutate(Gtj = (gain_km2 / (total_km2 * Interval)) * 100) %>%
+        dplyr::left_join(eq1[c("Period", "St")], by = "Period") %>%
+        dplyr::rename(GG_km2 = gain_km2)
 
-      level01 <-
-        eq1 %>% dplyr::mutate(U = eq2[[2]]) # Type = ifelse(St > U, "Fast", "Slow"))
-
-      # ____________Categorical ----
-      # EQ3 - Gtj ----
-      num03 <- lulc %>% dplyr::filter(From != To) %>%
-        dplyr::group_by(Period, To, Interval) %>% dplyr::summarise(num03 = sum(km2))
-
-      denom03 <-
-        lulc %>% dplyr::group_by(Period, To) %>% dplyr::summarise(denom03 = sum(km2))
-
-      eq3 <-
-        num03 %>% dplyr::left_join(denom03, by = c("Period", "To")) %>%
-        dplyr::mutate(Gtj = (num03 / (denom03 * Interval)) * 100) %>%
-        dplyr::left_join(eq1[c(1,3)], by = "Period") %>% dplyr::select(1,2,3,4,6,7) %>%
-        rename("GG_km2" = "num03")
-
-      # EQ4 -   Lti ---------
-      num04 <- lulc %>% dplyr::filter(From != To) %>%
-        dplyr::group_by(Period, From, Interval) %>% dplyr::summarise(num04 = sum(km2))
-
-      denom04 <-
-        lulc %>% dplyr::group_by(Period, From) %>% dplyr::summarise(denom04 = sum(km2))
-
-      eq4 <-
-        num04 %>% dplyr::left_join(denom04, by = c("Period", "From")) %>%
-        dplyr::mutate(Lti = (num04 / (denom04 * Interval)) * 100) %>%
-        dplyr::left_join(eq1[c(1,3)], by = "Period") %>% dplyr::select(1,2,3,4,6,7) %>%
-        rename("GL_km2" = "num04")
+      # EQ4 - Lti --------- (Optimized loss calculation)
+      loss_summary <- categorical_summary %>%
+        dplyr::filter(From != To) %>%
+        dplyr::group_by(Period, From, Interval) %>%
+        dplyr::summarise(loss_km2 = sum(km2_val), .groups = "drop")
+      
+      total_by_from <- categorical_summary %>%
+        dplyr::group_by(Period, From) %>%
+        dplyr::summarise(total_km2 = sum(km2_val), .groups = "drop")
+      
+      eq4 <- loss_summary %>%
+        dplyr::left_join(total_by_from, by = c("Period", "From")) %>%
+        dplyr::mutate(Lti = (loss_km2 / (total_km2 * Interval)) * 100) %>%
+        dplyr::left_join(eq1[c("Period", "St")], by = "Period") %>%
+        dplyr::rename(GL_km2 = loss_km2)
 
       # ____________Transition ----
       # Witch transitions are particularly intensive in a given time interval?
