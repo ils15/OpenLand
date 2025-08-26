@@ -4,45 +4,31 @@ utils::globalVariables(c("Interval", "Period", "Year_from",
 #' @include demolandscape.R rasters_input.R generalfunctions.R
 NULL
 
-# Helper function for chunked processing
+# Helper function for chunked processing with optimized block processing
 .process_chunks <- function(r1, r2, chunk_size) {
   if (!inherits(r1, "SpatRaster") || !inherits(r2, "SpatRaster")) {
     stop("Chunked processing requires terra SpatRaster objects")
   }
   
-  # Get raster dimensions
-  nr <- terra::nrow(r1)
-  nc <- terra::ncol(r1)
-  
-  # Calculate optimal chunks
-  total_cells <- nr * nc
-  if (chunk_size <= 0) {
-    chunk_size <- min(1000000, total_cells)  # Default to 1M cells max
+  # Use terra::app for block processing - more efficient than manual chunks
+  block_fun <- function(v) {
+    # v is a matrix with two columns: r1 and r2 values for the block
+    df <- data.frame(From = v[,1], To = v[,2])
+    tab <- as.data.frame(table(df$From, df$To), stringsAsFactors = FALSE)
+    colnames(tab) <- c("From", "To", "count")
+    tab <- tab[tab$count > 0, ]
+    return(tab)
   }
   
-  rows_per_chunk <- max(1, floor(chunk_size / nc))
-  n_chunks <- ceiling(nr / rows_per_chunk)
+  # Stack the rasters so each block has both layers
+  rast_stack <- terra::c(r1, r2)
   
-  message("Processing ", total_cells, " cells in ", n_chunks, " chunks...")
+  # Use terra's native block processing for better memory management
+  message("Processing with terra::app block processing for optimal memory usage...")
+  block_results <- terra::app(rast_stack, fun = block_fun, blocks = TRUE)
   
-  # Process chunks
-  chunk_results <- vector("list", n_chunks)
-  for (i in 1:n_chunks) {
-    start_row <- (i - 1) * rows_per_chunk + 1
-    end_row <- min(i * rows_per_chunk, nr)
-    
-    # Extract chunk
-    chunk_ext <- terra::ext(r1)[c(1, 2, start_row, end_row)]
-    r1_chunk <- terra::crop(r1, chunk_ext)
-    r2_chunk <- terra::crop(r2, chunk_ext)
-    
-    # Process chunk - Use base c() instead of terra::c()
-    chunk_results[[i]] <- terra::crosstab(c(r1_chunk, r2_chunk), 
-                                         useNA = FALSE, long = TRUE)
-  }
-  
-  # Combine results
-  combined <- do.call(rbind, chunk_results)
+  # block_results is a list of data.frames, one per block
+  combined <- do.call(rbind, block_results)
   
   # Aggregate counts for duplicate From-To combinations
   aggregated <- aggregate(combined[, 3], 
@@ -243,7 +229,7 @@ contingencyTable <-
               message("Computing cross-tabulation with terra (", names(x), " vs ", names(y), ") - optimized performance...")
               report_optimization("Using terra::crosstab", "2-3x")
             }
-            contengency <- terra::crosstab(c(x, y), long = TRUE)
+            contengency <- terra::crosstab(terra::c(x, y), long = TRUE)
             if (is.null(step_num)) {
               message("Terra cross-tabulation completed successfully.")
             }
