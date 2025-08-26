@@ -25,24 +25,20 @@ NULL
   
   message("Processing ", total_cells, " cells in ", n_chunks, " chunks...")
   
-  # Process chunks
-  chunk_results <- vector("list", n_chunks)
-  for (i in 1:n_chunks) {
-    start_row <- (i - 1) * rows_per_chunk + 1
-    end_row <- min(i * rows_per_chunk, nr)
-    
-    # Extract chunk
-    chunk_ext <- terra::ext(r1)[c(1, 2, start_row, end_row)]
-    r1_chunk <- terra::crop(r1, chunk_ext)
-    r2_chunk <- terra::crop(r2, chunk_ext)
-    
-    # Process chunk - Use base c() instead of terra::c()
-    chunk_results[[i]] <- terra::crosstab(c(r1_chunk, r2_chunk), 
-                                         useNA = FALSE, long = TRUE)
+  # Use terra::app for block processing
+  block_fun <- function(v) {
+    # v is a matrix with two columns: r1 and r2 values for the block
+    df <- data.frame(From = v[,1], To = v[,2])
+    tab <- as.data.frame(table(df$From, df$To), stringsAsFactors = FALSE)
+    colnames(tab) <- c("From", "To", "count")
+    tab <- tab[tab$count > 0, ]
+    return(tab)
   }
-  
-  # Combine results
-  combined <- do.call(rbind, chunk_results)
+  # Stack the rasters so each block has both layers
+  rast_stack <- c(r1, r2)
+  block_results <- terra::app(rast_stack, fun = block_fun, blocks = TRUE)
+  # block_results is a list of data.frames, one per block
+  combined <- do.call(rbind, block_results)
   
   # Aggregate counts for duplicate From-To combinations
   aggregated <- aggregate(combined[, 3], 
