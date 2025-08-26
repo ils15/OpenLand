@@ -141,7 +141,42 @@ contingencyTable <-
       message("⚡ Performance optimization: ", optimization_type, speedup_text)
     }
 
-    # Configure parallel processing
+    # Validate exclude_classes parameter
+    if (!is.null(exclude_classes)) {
+      if (!is.numeric(exclude_classes)) {
+        stop("exclude_classes must be a numeric vector")
+      }
+      if (any(is.na(exclude_classes))) {
+        stop("exclude_classes cannot contain NA values")
+      }
+      # Convert to integer to match raster values
+      exclude_classes <- as.integer(exclude_classes)
+      message("Classes to be excluded from analysis: ", paste(exclude_classes, collapse = ", "))
+    }
+
+    rList <- .input_rasters(input_raster)
+
+    # Optimize raster format for processing efficiency
+    if (inherits(rList, "RasterStack") || inherits(rList, "RasterBrick")) {
+      if (requireNamespace("terra", quietly = TRUE)) {
+        message("⚡ Converting to terra for optimized processing...")
+        rList <- terra::rast(rList)
+        report_optimization("Format optimization (raster → terra)", "2-3x")
+      }
+    }
+
+    # Get number of layers - compatible with both raster and terra
+    if (inherits(rList, "SpatRaster")) {
+      n_raster <- terra::nlyr(rList)
+    } else {
+      n_raster <- raster::nlayers(rList)
+    }
+
+    if (n_raster < 2) {
+      stop('contingencyTable needs at least 2 rasters')
+    }
+
+    # Configure parallel processing (after n_raster is defined)
     use_parallel <- parallel && n_raster > 2
     if (use_parallel) {
       if (!requireNamespace("future.apply", quietly = TRUE)) {
@@ -163,42 +198,6 @@ contingencyTable <-
           report_optimization("Multi-core processing setup", paste0(n_cores, "x cores"))
         }
       }
-    }
-
-    # Validate exclude_classes parameter
-    if (!is.null(exclude_classes)) {
-      if (!is.numeric(exclude_classes)) {
-        stop("exclude_classes must be a numeric vector")
-      }
-      if (any(is.na(exclude_classes))) {
-        stop("exclude_classes cannot contain NA values")
-      }
-      # Convert to integer to match raster values
-      exclude_classes <- as.integer(exclude_classes)
-      message("Classes to be excluded from analysis: ", paste(exclude_classes, collapse = ", "))
-    }
-
-    rList <- .input_rasters(input_raster)
-
-    # Optimize raster format for processing efficiency
-    original_format <- class(rList)[1]
-    if (inherits(rList, "RasterStack") || inherits(rList, "RasterBrick")) {
-      if (requireNamespace("terra", quietly = TRUE)) {
-        message("⚡ Converting to terra for optimized processing...")
-        rList <- terra::rast(rList)
-        report_optimization("Format optimization (raster → terra)", "2-3x")
-      }
-    }
-
-    # Get number of layers - compatible with both raster and terra
-    if (inherits(rList, "SpatRaster")) {
-      n_raster <- terra::nlyr(rList)
-    } else {
-      n_raster <- raster::nlayers(rList)
-    }
-
-    if (n_raster < 2) {
-      stop('contingencyTable needs at least 2 rasters')
     }
 
     # Filter stack to remove excluded classes if specified
@@ -407,7 +406,7 @@ contingencyTable <-
       lulctable[[2]] %>% 
       dplyr::distinct(From) %>% 
       dplyr::rename(categoryValue = From) %>%
-      dplyr::arrange(categoryValue)
+      dplyr::arrange(.data$categoryValue)
     
     # Add excluded classes information to the legend if any were excluded
     if (!is.null(exclude_classes) && length(exclude_classes) > 0) {
