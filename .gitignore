@@ -27,5 +27,3 @@ Rplots.pdf
 
 # Keep official tests but ignore development tests
 !tests/testthat/test_*.R
-tests/testthat/test_performance_optimizations.R
-tests/testthat/test_exclude_classes.R
