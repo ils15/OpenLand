@@ -1,31 +1,41 @@
+# R specific files
 .Rproj.user
 .Rhistory
 .RData
+.Ruserdata
+
+# Package documentation
 inst/doc
 doc
 Meta
 docs/
+
+# Development artifacts
 *.pdf
-docs
+Rplots.pdf
 
-# Development and testing files
+# IDE and development tools
+.agentic-tools-mcp/
+
+# Development and testing files (ignored in development, cleaned for contribution)
 Copilot-Processing.md
+validacao*.R
+validation*.R
+diagnose*.R
+final_*.R
+update_docs.R
+test_problems.R
 quick_test.R
-test_*.R
-**/test_progress_example.R
-**/performance_test.R
+CORREÇÕES*.md
+VALIDACAO*.md
 
-# Development directories  
+# Development directories (already cleaned)
 simple_plots_*/
 TESTE_IMG/
 TESTE_RECORTE/
 scripts/
 
-# Temporary files
-Rplots.pdf
-.agentic-tools-mcp/
-
-# Keep official tests but ignore development tests
-!tests/testthat/test_*.R
-tests/testthat/test_performance_optimizations.R
+# Package build artifacts  
+*.tar.gz
+*.zip
 tests/testthat/test_exclude_classes.R
