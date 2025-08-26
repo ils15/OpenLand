@@ -243,7 +243,7 @@ contingencyTable <-
               message("Computing cross-tabulation with terra (", names(x), " vs ", names(y), ") - optimized performance...")
               report_optimization("Using terra::crosstab", "2-3x")
             }
-            contengency <- terra::crosstab(c(x, y), long = TRUE)
+            contengency <- terra::crosstab(terra::c(x, y), long = TRUE)
             if (is.null(step_num)) {
               message("Terra cross-tabulation completed successfully.")
             }
