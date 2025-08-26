@@ -28,30 +28,54 @@ setGeneric(".input_rasters", function(x, use_terra = TRUE, ...)
 #' @aliases character
 setMethod(".input_rasters", signature(x = "character"),
           function(x, use_terra = TRUE, ...) {
-            files <- list.files(path = x,
-                                pattern = ".tif$",
-                                full.names = FALSE)
-            if (length(files) > 0) {
-              sorted_files <- sort(files)
-              paths <- file.path(x, sorted_files)
-              
+            # Robust path handling
+            normalized_path <- normalizePath(path.expand(x), winslash = "/", mustWork = FALSE)
+            
+            # Check if it's a single file or directory
+            if (file.exists(normalized_path) && !dir.exists(normalized_path)) {
+              # Single file - try to load directly
               if (use_terra) {
-                # Use terra for better performance
                 tryCatch({
-                  maps <- terra::rast(paths)
+                  maps <- terra::rast(normalized_path)
                   return(maps)
                 }, error = function(e) {
                   warning("Terra loading failed, falling back to raster package: ", e$message)
-                  maps <- raster::stack(paths)
+                  maps <- raster::stack(normalized_path)
                   return(maps)
                 })
               } else {
-                # Use raster package
-                maps <- raster::stack(paths)
+                maps <- raster::stack(normalized_path)
                 return(maps)
               }
+            } else if (dir.exists(normalized_path)) {
+              # Directory - list files
+              files <- list.files(path = normalized_path,
+                                  pattern = ".tif$",
+                                  full.names = FALSE)
+              if (length(files) > 0) {
+                sorted_files <- sort(files)
+                paths <- normalizePath(file.path(normalized_path, sorted_files), winslash = "/")
+                
+                if (use_terra) {
+                  # Use terra for better performance
+                  tryCatch({
+                    maps <- terra::rast(paths)
+                    return(maps)
+                  }, error = function(e) {
+                    warning("Terra loading failed, falling back to raster package: ", e$message)
+                    maps <- raster::stack(paths)
+                    return(maps)
+                  })
+                } else {
+                  # Use raster package
+                  maps <- raster::stack(paths)
+                  return(maps)
+                }
+              } else {
+                stop("No .tif files found in directory: ", normalized_path)
+              }
             } else {
-              stop("maps not found")
+              stop("Path does not exist: ", normalized_path)
             }
           })
 

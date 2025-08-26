@@ -38,11 +38,19 @@ summary_dir <- function(path) {
       stop("List elements must be RasterLayer or SpatRaster objects")
     }
   } else if (inherits(path, "character")) {
+    # Robust path handling - normalize and expand path
+    normalized_path <- normalizePath(path.expand(path), winslash = "/", mustWork = FALSE)
+    
+    # Check if directory exists
+    if (!dir.exists(normalized_path)) {
+      stop("Directory does not exist: ", normalized_path)
+    }
+    
     # Directory path - load files vectorized
-    raster_files <- list.files(path, pattern = ".tif$", full.names = TRUE)
+    raster_files <- list.files(normalized_path, pattern = ".tif$", full.names = TRUE)
     
     if (length(raster_files) == 0) {
-      stop("No .tif files found in the specified directory")
+      stop("No .tif files found in the specified directory: ", normalized_path)
     }
     
     # Use terra for faster loading - vectorized approach

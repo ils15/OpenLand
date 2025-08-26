@@ -357,24 +357,35 @@ contingencyTable <-
         message("⚡ Using parallel processing for multi-step analysis...")
         report_optimization("Parallel multi-step processing", paste0(n_cores, "x cores"))
         
-        # Parallel processing with future.apply
-        comparison_results <- future.apply::future_lapply(1:num_comparisons, function(i) {
-          table_cross(rList_multi[[i]], rList_multi[[i + 1]], 
-                     step_num = i, total_steps = num_comparisons, 
-                     use_chunks = use_chunks_multiStep)
-        }, future.seed = TRUE)
+        # Parallel processing with future.apply (with robust fallback)
+        comparison_results <- tryCatch({
+          future.apply::future_lapply(1:num_comparisons, function(i) {
+            table_cross(rList_multi[[i]], rList_multi[[i + 1]], 
+                       step_num = i, total_steps = num_comparisons, 
+                       use_chunks = use_chunks_multiStep)
+          }, future.seed = TRUE)
+        }, error = function(e) {
+          warning("Parallel processing failed, using sequential: ", e$message)
+          # Fallback to sequential
+          sequential_results <- vector("list", num_comparisons)
+          for (i in 1:num_comparisons) {
+            sequential_results[[i]] <- table_cross(rList_multi[[i]], rList_multi[[i + 1]], 
+                                                   step_num = i, total_steps = num_comparisons,
+                                                   use_chunks = use_chunks_multiStep)
+          }
+          sequential_results
+        })
         
       } else {
         # Sequential processing (fallback or single-core)
         if (parallel && num_comparisons > 1) {
           message("Using sequential processing (parallel setup failed or not beneficial)")
         }
-        comparison_results <- vector("list", num_comparisons)
-        for (i in 1:num_comparisons) {
-          comparison_results[[i]] <- table_cross(rList_multi[[i]], rList_multi[[i + 1]], 
-                                                 step_num = i, total_steps = num_comparisons,
-                                                 use_chunks = use_chunks_multiStep)
-        }
+        comparison_results <- lapply(1:num_comparisons, function(i) {
+          table_cross(rList_multi[[i]], rList_multi[[i + 1]], 
+                     step_num = i, total_steps = num_comparisons,
+                     use_chunks = use_chunks_multiStep)
+        })
       }
       
       table_multi <- Reduce(rbind, comparison_results)
