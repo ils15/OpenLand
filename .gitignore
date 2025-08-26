@@ -19,6 +19,7 @@ test_*.R
 simple_plots_*/
 TESTE_IMG/
 TESTE_RECORTE/
+TESTE/
 scripts/
 
 # Temporary files
